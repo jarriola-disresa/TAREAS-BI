@@ -125,7 +125,10 @@ def cargar_datos() -> pd.DataFrame:
     if not DATA_FILE.exists():
         pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False, sep=";")
         return pd.DataFrame(columns=COLUMNAS)
-    df = pd.read_csv(DATA_FILE, sep=";")
+    # Detecta separador para compatibilidad con archivos viejos (coma) y nuevos (;)
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        sep = ";" if ";" in f.readline() else ","
+    df = pd.read_csv(DATA_FILE, sep=sep)
     for col, default in [("tiempo_estimado_min", 0), ("notas", ""), ("fecha_limite", None)]:
         if col not in df.columns:
             df[col] = default
