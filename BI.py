@@ -312,31 +312,47 @@ with t_new:
         if df_rec.empty:
             st.info("Aún no hay tareas. ¡Agrega la primera!")
         else:
-            recientes = df_rec.sort_values("creado_en", ascending=False).head(8)
+            recientes = df_rec.sort_values("creado_en", ascending=False).head(10)
             for _, r in recientes.iterrows():
-                tc = COLOR_ESTADO.get(r["estado"], C_GRAY)
+                rid = int(r["id"])
+                tc  = COLOR_ESTADO.get(r["estado"], C_GRAY)
                 badge = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
-                st.markdown(f"""
-                <div class='task-row' style='--tc:{tc}'>
-                    <div style='display:flex;justify-content:space-between;align-items:center'>
+
+                with st.expander(
+                    f"#{rid} · {r['descripcion'][:48]}",
+                    expanded=False,
+                ):
+                    # Info rápida
+                    st.markdown(f"""
+                    <div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px'>
                         <span class='{badge}'>{r["usuario"]}</span>
-                        <span style='font-size:.74rem;color:#64748B'>{r["fecha"]}</span>
-                    </div>
-                    <div style='font-size:.9rem;font-weight:600;color:#1B3A6B;
-                                margin-top:4px'>{r["descripcion"][:60]}</div>
-                    <div style='display:flex;gap:8px;margin-top:6px;flex-wrap:wrap'>
-                        <span style='font-size:.72rem;background:#F1F5F9;
-                                     border-radius:6px;padding:2px 8px;color:#475569'>
-                            {r["tipo"]}
-                        </span>
-                        <span style='font-size:.72rem;color:{tc};font-weight:600'>
-                            ● {r["estado"]}
-                        </span>
-                        <span style='font-size:.72rem;color:{color_prioridad(r["prioridad"])};font-weight:600'>
-                            {r["prioridad"]}
-                        </span>
-                    </div>
-                </div>""", unsafe_allow_html=True)
+                        <span style='font-size:.75rem;color:{tc};font-weight:700'>● {r["estado"]}</span>
+                        <span style='font-size:.75rem;color:{color_prioridad(r["prioridad"])};font-weight:700'>{r["prioridad"]}</span>
+                        <span style='font-size:.75rem;color:#64748B'>{r["fecha"]} · {r["tipo"]}</span>
+                    </div>""", unsafe_allow_html=True)
+
+                    with st.form(f"rec_edit_{rid}"):
+                        nd = st.text_area("Descripción", value=r["descripcion"],
+                                          height=68, key=f"rd_{rid}")
+                        ea, eb, ec = st.columns(3)
+                        ne  = ea.selectbox("Estado",    ESTADOS,     index=ESTADOS.index(r["estado"])         if r["estado"]    in ESTADOS     else 0, key=f"re_{rid}")
+                        npr = eb.selectbox("Prioridad", PRIORIDADES, index=PRIORIDADES.index(r["prioridad"])  if r["prioridad"] in PRIORIDADES else 1, key=f"rp_{rid}")
+                        nu  = ec.selectbox("Asignado",  USUARIOS,    index=USUARIOS.index(r["usuario"])       if r["usuario"]   in USUARIOS    else 0, key=f"ru_{rid}")
+                        ntr = st.number_input("Tiempo real (min)", min_value=0,
+                                              value=int(r["tiempo_min"]), step=15, key=f"rt_{rid}")
+
+                        ba, bb = st.columns(2)
+                        guardar = ba.form_submit_button("💾 Guardar", use_container_width=True, type="primary")
+                        borrar  = bb.form_submit_button("🗑️ Borrar",  use_container_width=True)
+
+                    if guardar:
+                        actualizar_tarea(rid, {"descripcion": nd.strip(), "estado": ne,
+                                               "prioridad": npr, "usuario": nu,
+                                               "tiempo_min": ntr})
+                        st.rerun()
+                    if borrar:
+                        eliminar_tarea(rid)
+                        st.rerun()
 
 # ── Filtros globales (para los demás tabs) ────────────────────────────────────
 if df_all.empty:
