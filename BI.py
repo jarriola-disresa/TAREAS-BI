@@ -1,6 +1,6 @@
 """
-Dashboard BI - Gestión de Tareas Diarias
-Disresa | Departamento de Business Intelligence
+Dashboard de Gestión de Tareas
+Disresa | Multi-área | BI · Distribución · Insumos · Compras
 """
 
 import hashlib
@@ -14,8 +14,8 @@ import io
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="BI Tasks | Disresa",
-    page_icon="📊",
+    page_title="Tareas | Disresa",
+    page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -25,7 +25,7 @@ def _check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
     st.markdown(
-        "<h2 style='text-align:center;margin-top:80px'>🔐 Dashboard BI — Disresa</h2>",
+        "<h2 style='text-align:center;margin-top:80px'>🔐 Gestión de Tareas — Disresa</h2>",
         unsafe_allow_html=True,
     )
     col = st.columns([1, 1, 1])[1]
@@ -108,7 +108,8 @@ COLOR_ESTADO = {"Completada": C_GREEN, "En progreso": C_BLUE,
 
 # ── Catálogos ─────────────────────────────────────────────────────────────────
 DATA_FILE   = Path("tasks.csv")
-USUARIOS    = ["Chema", "JC"]
+AREAS       = ["BI","Distribución","Insumos","Compras"]
+USUARIOS    = ["Chema","Sebas","Gilda","Karen","Allison","JC Salazar","JC Letona","Manuel"]
 MARCAS      = ["Skechers","Cole Haan","New Era","Columbia",
                "Psycho Bunny","47 Brand","Fabletics","Multi-marca","N/A"]
 PAISES      = ["GT","SV","HN","CR","PA","RD","Regional","N/A"]
@@ -117,8 +118,30 @@ TIPOS       = ["Reporte sell-through","Automatización Python","ETL / Airflow",
                "Data quality SAP","Análisis ad-hoc","Reunión","PBI","Otro"]
 PRIORIDADES = ["🔴 Alta","🟡 Media","🟢 Baja"]
 ESTADOS     = ["Pendiente","En progreso","Completada","Bloqueada"]
-COLUMNAS    = ["id","fecha","fecha_limite","usuario","tipo","marca","pais","descripcion",
+COLUMNAS    = ["id","fecha","fecha_limite","area","usuario","tipo","marca","pais","descripcion",
                "prioridad","estado","tiempo_min","tiempo_estimado_min","notas","creado_en"]
+
+# Colores por usuario
+USER_COLORS = {
+    "Chema":      ("#DBEAFE","#1D4ED8"),
+    "JC Letona":  ("#D1FAE5","#065F46"),
+    "Sebas":      ("#EDE9FE","#5B21B6"),
+    "Gilda":      ("#FCE7F3","#9D174D"),
+    "Karen":      ("#FEF3C7","#92400E"),
+    "Allison":    ("#ECFDF5","#047857"),
+    "JC Salazar": ("#FEE2E2","#991B1B"),
+    "Manuel":     ("#E0F2FE","#0369A1"),
+}
+AREA_COLORS = {
+    "BI":           C_BLUE,
+    "Distribución": C_GREEN,
+    "Insumos":      C_AMBER,
+    "Compras":      C_PURPLE,
+}
+
+def user_badge(nombre):
+    bg, color = USER_COLORS.get(nombre, ("#F1F5F9","#475569"))
+    return f"<span style='background:{bg};color:{color};padding:2px 9px;border-radius:20px;font-size:.76rem;font-weight:700'>{nombre}</span>"
 
 # ── Data layer ────────────────────────────────────────────────────────────────
 def cargar_datos() -> pd.DataFrame:
@@ -129,7 +152,8 @@ def cargar_datos() -> pd.DataFrame:
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         sep = ";" if ";" in f.readline() else ","
     df = pd.read_csv(DATA_FILE, sep=sep)
-    for col, default in [("tiempo_estimado_min", 0), ("notas", ""), ("fecha_limite", None)]:
+    for col, default in [("tiempo_estimado_min", 0), ("notas", ""),
+                         ("fecha_limite", None), ("area", "BI")]:
         if col not in df.columns:
             df[col] = default
     if not df.empty:
@@ -201,8 +225,8 @@ df_all = cargar_datos()
 with st.sidebar:
     st.markdown(f"""
     <div style='text-align:center;padding:8px 0 18px'>
-        <div style='font-size:2rem'>📊</div>
-        <div style='font-weight:700;color:#1B3A6B;font-size:1.05rem'>BI Tasks</div>
+        <div style='font-size:2rem'>📋</div>
+        <div style='font-weight:700;color:#1B3A6B;font-size:1.05rem'>Gestión de Tareas</div>
         <div style='color:#64748B;font-size:.74rem'>Disresa · {date.today().strftime("%d %b %Y")}</div>
     </div>""", unsafe_allow_html=True)
 
@@ -212,7 +236,7 @@ with st.sidebar:
         prog_n = (df_all["estado"] == "En progreso").sum()
         bloq_n = (df_all["estado"] == "Bloqueada").sum()
 
-        st.markdown("**Resumen rápido**")
+        st.markdown("**Resumen general**")
         st.metric("Tareas hoy",  hoy_n)
         st.metric("En progreso", prog_n)
         st.metric("Pendientes",  pend_n)
@@ -220,10 +244,14 @@ with st.sidebar:
             st.metric("⚠️ Bloqueadas", bloq_n)
 
         st.divider()
-        st.markdown("**Por usuario**")
-        for u in USUARIOS:
-            n = len(df_all[df_all["usuario"] == u])
-            st.markdown(f"**{u}** — {n} tareas")
+        st.markdown("**Por área**")
+        for a in AREAS:
+            n = len(df_all[df_all["area"] == a])
+            color = AREA_COLORS.get(a, C_GRAY)
+            st.markdown(
+                f"<span style='color:{color};font-weight:700'>■</span> **{a}** — {n}",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
     st.caption(f"📁 `tasks.csv`  ·  v2.0")
@@ -231,23 +259,35 @@ with st.sidebar:
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <h1 style='color:#1B3A6B;margin-bottom:0;font-size:1.75rem'>
-    📊 Dashboard BI — Gestión de Tareas
+    📋 Gestión de Tareas — Disresa
 </h1>
 <p style='color:#64748B;margin-top:2px;font-size:.86rem'>
-    Disresa · Departamento de Business Intelligence
+    BI · Distribución · Insumos · Compras
 </p>""", unsafe_allow_html=True)
 
+# ── Selector de área ──────────────────────────────────────────────────────────
+area_sel = st.radio(
+    "Área",
+    ["Todas"] + AREAS,
+    horizontal=True,
+    key="area_sel",
+    label_visibility="collapsed",
+)
+st.divider()
+
+# Filtrar por área seleccionada
+df_area = df_all[df_all["area"] == area_sel] if area_sel != "Todas" else df_all.copy()
+
 # ── Alertas bloqueadas ────────────────────────────────────────────────────────
-if not df_all.empty:
-    bloq_df = df_all[df_all["estado"] == "Bloqueada"]
+if not df_area.empty:
+    bloq_df = df_area[df_area["estado"] == "Bloqueada"]
     if not bloq_df.empty:
         with st.expander(f"⚠️  {len(bloq_df)} tarea(s) BLOQUEADA(s) — requieren atención", expanded=True):
             for _, r in bloq_df.iterrows():
-                badge = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
-                nota  = f"<br><small>📌 {r['notas']}</small>" if r.get("notas") else ""
+                nota = f"<br><small>📌 {r['notas']}</small>" if r.get("notas") else ""
                 st.markdown(f"""
                 <div class='alert-blocked'>
-                    <b>#{int(r['id'])}</b> · <span class='{badge}'>{r['usuario']}</span>
+                    <b>#{int(r['id'])}</b> · {user_badge(r['usuario'])}
                     · {r['tipo']} · <b>{r['descripcion'][:80]}</b>{nota}
                 </div>""", unsafe_allow_html=True)
 
@@ -272,14 +312,17 @@ with t_new:
 
         with st.form("form_nueva", clear_on_submit=True):
             desc = st.text_area("📝 Descripción *",
-                                placeholder="¿Qué tarea vas a registrar? Ej: Reporte sell-through Skechers GT semana 20...",
+                                placeholder="¿Qué tarea vas a registrar?",
                                 height=100)
 
-            r1a, r1b, r1c, r1d = st.columns(4)
-            usuario  = r1a.selectbox("👤 Asignado a",  USUARIOS)
-            prior    = r1b.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
-            estado      = r1c.selectbox("📌 Estado",         ESTADOS)
-            fecha_n     = r1d.date_input("📅 Inicio",        value=date.today())
+            r1a, r1b, r1c, r1d, r1e = st.columns(5)
+            area_form = r1a.selectbox("🏢 Área",
+                                      AREAS,
+                                      index=AREAS.index(area_sel) if area_sel in AREAS else 0)
+            usuario   = r1b.selectbox("👤 Asignado a",  USUARIOS)
+            prior     = r1c.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
+            estado    = r1d.selectbox("📌 Estado",      ESTADOS)
+            fecha_n   = r1e.date_input("📅 Inicio",     value=date.today())
 
             r2a, r2b, r2c, r2d = st.columns(4)
             tipo      = sel_o_escribe("🗂️ Tipo de tarea", TIPOS,   "tipo_n",  r2a)
@@ -305,7 +348,7 @@ with t_new:
             else:
                 guardar_tarea({
                     "fecha": fecha_n, "fecha_limite": fecha_lim,
-                    "usuario": usuario, "tipo": tipo,
+                    "area": area_form, "usuario": usuario, "tipo": tipo,
                     "marca": marca, "pais": pais, "descripcion": desc.strip(),
                     "prioridad": prior, "estado": estado,
                     "tiempo_min": int(t_real), "tiempo_estimado_min": int(t_est),
@@ -321,14 +364,13 @@ with t_new:
     # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
         st.markdown("### Tareas recientes")
-        if df_all.empty:
+        if df_area.empty:
             st.info("Aún no hay tareas. ¡Agrega la primera!")
         else:
-            recientes = df_all.sort_values("creado_en", ascending=False).head(10)
+            recientes = df_area.sort_values("creado_en", ascending=False).head(10)
             for _, r in recientes.iterrows():
                 rid = int(r["id"])
                 tc  = COLOR_ESTADO.get(r["estado"], C_GRAY)
-                badge = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
 
                 with st.expander(
                     f"#{rid} · {r['descripcion'][:48]}",
@@ -337,7 +379,7 @@ with t_new:
                     # Info rápida
                     st.markdown(f"""
                     <div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px'>
-                        <span class='{badge}'>{r["usuario"]}</span>
+                        {user_badge(r["usuario"])}
                         <span style='font-size:.75rem;color:{tc};font-weight:700'>● {r["estado"]}</span>
                         <span style='font-size:.75rem;color:{color_prioridad(r["prioridad"])};font-weight:700'>{r["prioridad"]}</span>
                         <span style='font-size:.75rem;color:#64748B'>{r["fecha"]} · {r["tipo"]}</span>
@@ -367,24 +409,24 @@ with t_new:
                         st.rerun()
 
 # ── Filtros globales (para los demás tabs) ────────────────────────────────────
-if df_all.empty:
-    for tab in [t1, t2, t3, t4, t5, t6]:
+if df_area.empty:
+    for tab in [t1, t2, t3, t4, t_gantt, t5, t6]:
         with tab:
-            st.info("No hay tareas registradas todavía. Ve a ➕ Nueva Tarea para agregar la primera.")
+            st.info("No hay tareas para esta área todavía. Ve a ➕ Nueva Tarea para agregar la primera.")
     st.stop()
 
-with st.expander("🔍  Filtros globales", expanded=False):
+with st.expander("🔍  Filtros adicionales", expanded=False):
     fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-    f_usr  = fc1.multiselect("Usuario", sorted(df_all["usuario"].unique()))
-    f_tipo = fc2.multiselect("Tipo",    sorted(df_all["tipo"].unique()))
-    f_marc = fc3.multiselect("Marca",   sorted(df_all["marca"].unique()))
-    f_pais = fc4.multiselect("País",    sorted(df_all["pais"].unique()))
-    f_est  = fc5.multiselect("Estado",  sorted(df_all["estado"].unique()))
+    f_usr  = fc1.multiselect("Usuario", sorted(df_area["usuario"].unique()))
+    f_tipo = fc2.multiselect("Tipo",    sorted(df_area["tipo"].unique()))
+    f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
+    f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
+    f_est  = fc5.multiselect("Estado",  sorted(df_area["estado"].unique()))
     rango  = st.date_input("Rango de fechas",
-                           value=(df_all["fecha"].min(), df_all["fecha"].max()),
-                           min_value=df_all["fecha"].min(), max_value=df_all["fecha"].max())
+                           value=(df_area["fecha"].min(), df_area["fecha"].max()),
+                           min_value=df_area["fecha"].min(), max_value=df_area["fecha"].max())
 
-df_f = df_all.copy()
+df_f = df_area.copy()
 if f_usr:  df_f = df_f[df_f["usuario"].isin(f_usr)]
 if f_tipo: df_f = df_f[df_f["tipo"].isin(f_tipo)]
 if f_marc: df_f = df_f[df_f["marca"].isin(f_marc)]
@@ -781,6 +823,9 @@ with t6:
                 with st.form(f"edit_{rid}"):
                     ea, eb = st.columns(2)
                     with ea:
+                        na_  = st.selectbox("🏢 Área", AREAS,
+                                            index=AREAS.index(row["area"]) if row.get("area") in AREAS else 0,
+                                            key=f"a_{rid}")
                         nf   = st.date_input("📅 Inicio",     value=pd.to_datetime(row["fecha"]).date(), key=f"f_{rid}")
                         nfl  = st.date_input("🏁 Fecha límite",
                                              value=pd.to_datetime(row["fecha_limite"]).date() if pd.notna(row["fecha_limite"]) else date.today() + timedelta(days=7),
@@ -804,7 +849,7 @@ with t6:
                 if guardar:
                     actualizar_tarea(rid, {
                         "fecha": nf, "fecha_limite": nfl,
-                        "usuario": nu, "tipo": nt,
+                        "area": na_, "usuario": nu, "tipo": nt,
                         "marca": nm, "pais": np_, "descripcion": nd.strip(),
                         "prioridad": npr, "estado": ne,
                         "tiempo_min": ntr, "tiempo_estimado_min": nte,
