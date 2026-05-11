@@ -570,62 +570,76 @@ with t2:
 # TAB 3 — EQUIPO
 # ══════════════════════════════════════════════════════════════════════════════
 with t3:
-    col_ch, col_jc = st.columns(2)
-    badges = {"Chema": ("badge-chema", C_BLUE), "JC": ("badge-jc", C_GREEN)}
+    # Solo usuarios que tienen tareas con los filtros actuales
+    usuarios_activos = [u for u in USUARIOS if len(df_f[df_f["usuario"] == u]) > 0]
 
-    for u, col in zip(USUARIOS, [col_ch, col_jc]):
-        dfu    = df_f[df_f["usuario"] == u]
-        tot_u  = len(dfu)
-        comp_u = (dfu["estado"] == "Completada").sum()
-        pct_u  = f"{comp_u/tot_u*100:.0f}%" if tot_u else "0%"
-        h_u    = dfu["tiempo_min"].sum() / 60
-        badge_cls, badge_color = badges[u]
+    if not usuarios_activos:
+        st.info("Sin tareas con los filtros actuales.")
+    else:
+        # Paleta de colores para cada usuario
+        RADAR_COLORS = [C_BLUE, C_GREEN, C_AMBER, C_RED, C_PURPLE,
+                        "#F97316", "#0369A1", "#047857"]
 
-        with col:
-            st.markdown(f"<h3><span class='{badge_cls}'>{u}</span></h3>",
-                        unsafe_allow_html=True)
-            m1, m2, m3 = st.columns(3)
-            with m1: kpi("Total",       tot_u,           color=badge_color)
-            with m2: kpi("Completadas", pct_u,           color=C_GREEN)
-            with m3: kpi("Horas",       f"{h_u:.1f}h",  color=C_NAVY)
+        # ── Tarjetas individuales (2 columnas) ────────────────────────────────
+        for i in range(0, len(usuarios_activos), 2):
+            cols = st.columns(2)
+            for j, col in enumerate(cols):
+                if i + j >= len(usuarios_activos):
+                    break
+                u          = usuarios_activos[i + j]
+                badge_color = RADAR_COLORS[USUARIOS.index(u) % len(RADAR_COLORS)]
+                dfu        = df_f[df_f["usuario"] == u]
+                tot_u      = len(dfu)
+                comp_u     = (dfu["estado"] == "Completada").sum()
+                pct_u      = f"{comp_u/tot_u*100:.0f}%" if tot_u else "0%"
+                h_u        = dfu["tiempo_min"].sum() / 60
 
-            if not dfu.empty:
-                pt_u = dfu.groupby("tipo").size().reset_index(name="n").sort_values("n")
-                fig  = px.bar(pt_u, x="n", y="tipo", orientation="h",
-                              labels={"n":"","tipo":""},
-                              color_discrete_sequence=[badge_color])
-                fig.update_layout(**CL, height=270, title="Por tipo")
-                st.plotly_chart(fig, use_container_width=True)
+                with col:
+                    st.markdown(user_badge(u), unsafe_allow_html=True)
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    m1, m2, m3 = st.columns(3)
+                    with m1: kpi("Total",       tot_u,          color=badge_color)
+                    with m2: kpi("Completadas", pct_u,          color=C_GREEN)
+                    with m3: kpi("Horas",       f"{h_u:.1f}h", color=C_NAVY)
 
-                pe_u = dfu.groupby("estado").size().reset_index(name="n")
-                fig  = px.pie(pe_u, names="estado", values="n", hole=0.5,
-                              color="estado", color_discrete_map=COLOR_ESTADO)
-                fig.update_layout(**CL, height=220, title="Estado")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Sin tareas con los filtros actuales.")
+                    pt_u = dfu.groupby("tipo").size().reset_index(name="n").sort_values("n")
+                    fig  = px.bar(pt_u, x="n", y="tipo", orientation="h",
+                                  labels={"n":"","tipo":""},
+                                  color_discrete_sequence=[badge_color])
+                    fig.update_layout(**CL, height=240, title="Por tipo")
+                    st.plotly_chart(fig, use_container_width=True)
 
-    st.divider()
-    st.markdown("<div class='section-title'>Radar — Tipos de tarea por usuario</div>",
-                unsafe_allow_html=True)
-    fig = go.Figure()
-    for u, color in zip(USUARIOS, [C_BLUE, C_GREEN]):
-        dfu   = df_f[df_f["usuario"] == u]
-        vals  = [len(dfu[dfu["tipo"] == t]) for t in TIPOS]
+        st.divider()
+
+        # ── Radar comparativo ─────────────────────────────────────────────────
+        st.markdown("<div class='section-title'>Radar — Tipos de tarea por usuario</div>",
+                    unsafe_allow_html=True)
+        fig = go.Figure()
         theta = [t[:22] for t in TIPOS]
-        fig.add_trace(go.Scatterpolar(
-            r=vals + [vals[0]], theta=theta + [theta[0]],
-            fill="toself", name=u, line=dict(color=color),
-            fillcolor="rgba(13,157,219,0.2)" if color == C_BLUE else "rgba(0,196,154,0.2)"
-        ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, color="#94A3B8")),
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter,Arial,sans-serif", color="#334155"),
-        legend=dict(orientation="h", y=-0.1),
-        height=420, margin=dict(l=60, r=60, t=40, b=60),
-    )
-    st.plotly_chart(fig, use_container_width=True)
+
+        def hex_to_rgba(hex_color, alpha=0.2):
+            h = hex_color.lstrip("#")
+            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+            return f"rgba({r},{g},{b},{alpha})"
+
+        for idx, u in enumerate(usuarios_activos):
+            color = RADAR_COLORS[USUARIOS.index(u) % len(RADAR_COLORS)]
+            dfu   = df_f[df_f["usuario"] == u]
+            vals  = [len(dfu[dfu["tipo"] == t]) for t in TIPOS]
+            fig.add_trace(go.Scatterpolar(
+                r=vals + [vals[0]], theta=theta + [theta[0]],
+                fill="toself", name=u,
+                line=dict(color=color),
+                fillcolor=hex_to_rgba(color, 0.15),
+            ))
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, color="#94A3B8")),
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter,Arial,sans-serif", color="#334155"),
+            legend=dict(orientation="h", y=-0.15),
+            height=450, margin=dict(l=60, r=60, t=40, b=80),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — ACTIVIDAD
@@ -704,7 +718,7 @@ with t_gantt:
         else:
             color_col = {"Estado": "estado", "Usuario": "usuario", "Prioridad": "prioridad"}[g_color]
             color_map = {
-                "Chema": C_BLUE,      "JC": C_GREEN,
+                **{u: v for u, (_, v) in USER_COLORS.items()},
                 "Completada": C_GREEN, "En progreso": C_BLUE,
                 "Pendiente": C_AMBER,  "Bloqueada": C_RED,
                 "🔴 Alta": C_RED,     "🟡 Media": C_AMBER, "🟢 Baja": C_GREEN,
@@ -754,13 +768,12 @@ with t_gantt:
                     f"<div class='section-title' style='color:{C_RED}'>⚠️ {len(vencidas)} tarea(s) vencida(s)</div>",
                     unsafe_allow_html=True)
                 for _, r in vencidas.iterrows():
-                    badge  = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
-                    dias_v = (date.today() - r["Finish"].dt.date if hasattr(r["Finish"], "dt") else (date.today() - r["Finish"].date())).days
+                    dias_v = (date.today() - r["Finish"].date()).days
                     st.markdown(f"""
                     <div class='alert-blocked'>
-                        <b>#{int(r['id'])}</b> · <span class='{badge}'>{r['usuario']}</span>
+                        <b>#{int(r['id'])}</b> · {user_badge(r['usuario'])}
                         · <b>{r['descripcion'][:70]}</b>
-                        · <span style='color:{C_RED};font-weight:700'>Vencida hace {(date.today() - r["Finish"].date())} día(s)</span>
+                        · <span style='color:{C_RED};font-weight:700'>Vencida hace {dias_v} día(s)</span>
                     </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
