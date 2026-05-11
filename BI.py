@@ -123,9 +123,9 @@ COLUMNAS    = ["id","fecha","fecha_limite","usuario","tipo","marca","pais","desc
 # ── Data layer ────────────────────────────────────────────────────────────────
 def cargar_datos() -> pd.DataFrame:
     if not DATA_FILE.exists():
-        pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False)
+        pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False, sep=";")
         return pd.DataFrame(columns=COLUMNAS)
-    df = pd.read_csv(DATA_FILE)
+    df = pd.read_csv(DATA_FILE, sep=";")
     for col, default in [("tiempo_estimado_min", 0), ("notas", ""), ("fecha_limite", None)]:
         if col not in df.columns:
             df[col] = default
@@ -141,17 +141,17 @@ def guardar_tarea(nueva: dict):
     df = cargar_datos()
     nueva["id"]        = int(df["id"].max()) + 1 if not df.empty else 1
     nueva["creado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    pd.concat([df, pd.DataFrame([nueva])], ignore_index=True).to_csv(DATA_FILE, index=False)
+    pd.concat([df, pd.DataFrame([nueva])], ignore_index=True).to_csv(DATA_FILE, index=False, sep=";")
 
 def actualizar_tarea(task_id: int, campos: dict):
     df = cargar_datos()
     for k, v in campos.items():
         df.loc[df["id"] == task_id, k] = v
-    df.to_csv(DATA_FILE, index=False)
+    df.to_csv(DATA_FILE, index=False, sep=";")
 
 def eliminar_tarea(task_id: int):
     df = cargar_datos()
-    df[df["id"] != task_id].to_csv(DATA_FILE, index=False)
+    df[df["id"] != task_id].to_csv(DATA_FILE, index=False, sep=";")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def kpi(label, value, delta=None, color=C_BLUE):
@@ -748,7 +748,7 @@ with t5:
 
     dl1, dl2 = st.columns(2)
     with dl1:
-        st.download_button("⬇️ CSV", df_tabla.to_csv(index=False).encode(),
+        st.download_button("⬇️ CSV", df_tabla.to_csv(index=False, sep=";").encode(),
                            "tareas.csv", "text/csv", use_container_width=True)
     with dl2:
         try:
