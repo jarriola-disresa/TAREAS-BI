@@ -182,6 +182,9 @@ def color_prioridad(p):
     if "Media" in str(p): return C_AMBER
     return C_GREEN
 
+# ── Carga única de datos (se refresca completa en cada st.rerun) ──────────────
+df_all = cargar_datos()
+
 # ── SIDEBAR — métricas rápidas ────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
@@ -191,25 +194,23 @@ with st.sidebar:
         <div style='color:#64748B;font-size:.74rem'>Disresa · {date.today().strftime("%d %b %Y")}</div>
     </div>""", unsafe_allow_html=True)
 
-    df_side = cargar_datos()
-    if not df_side.empty:
-        hoy_n    = len(df_side[df_side["fecha"] == date.today()])
-        pend_n   = (df_side["estado"] == "Pendiente").sum()
-        prog_n   = (df_side["estado"] == "En progreso").sum()
-        bloq_n   = (df_side["estado"] == "Bloqueada").sum()
-        total_n  = len(df_side)
+    if not df_all.empty:
+        hoy_n  = len(df_all[df_all["fecha"] == date.today()])
+        pend_n = (df_all["estado"] == "Pendiente").sum()
+        prog_n = (df_all["estado"] == "En progreso").sum()
+        bloq_n = (df_all["estado"] == "Bloqueada").sum()
 
         st.markdown("**Resumen rápido**")
-        st.metric("Tareas hoy",      hoy_n)
-        st.metric("En progreso",     prog_n)
-        st.metric("Pendientes",      pend_n)
+        st.metric("Tareas hoy",  hoy_n)
+        st.metric("En progreso", prog_n)
+        st.metric("Pendientes",  pend_n)
         if bloq_n:
             st.metric("⚠️ Bloqueadas", bloq_n)
 
         st.divider()
         st.markdown("**Por usuario**")
         for u in USUARIOS:
-            n = len(df_side[df_side["usuario"] == u])
+            n = len(df_all[df_all["usuario"] == u])
             st.markdown(f"**{u}** — {n} tareas")
 
     st.divider()
@@ -223,8 +224,6 @@ st.markdown("""
 <p style='color:#64748B;margin-top:2px;font-size:.86rem'>
     Disresa · Departamento de Business Intelligence
 </p>""", unsafe_allow_html=True)
-
-df_all = cargar_datos()
 
 # ── Alertas bloqueadas ────────────────────────────────────────────────────────
 if not df_all.empty:
@@ -308,11 +307,10 @@ with t_new:
     # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
         st.markdown("### Tareas recientes")
-        df_rec = cargar_datos()
-        if df_rec.empty:
+        if df_all.empty:
             st.info("Aún no hay tareas. ¡Agrega la primera!")
         else:
-            recientes = df_rec.sort_values("creado_en", ascending=False).head(10)
+            recientes = df_all.sort_values("creado_en", ascending=False).head(10)
             for _, r in recientes.iterrows():
                 rid = int(r["id"])
                 tc  = COLOR_ESTADO.get(r["estado"], C_GRAY)
