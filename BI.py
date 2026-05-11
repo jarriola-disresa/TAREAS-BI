@@ -114,7 +114,7 @@ MARCAS      = ["Skechers","Cole Haan","New Era","Columbia",
 PAISES      = ["GT","SV","HN","CR","PA","RD","Regional","N/A"]
 TIPOS       = ["Reporte sell-through","Automatización Python","ETL / Airflow",
                "Reporte Excel","Presentación PPT","Email / Comunicación",
-               "Data quality SAP","Análisis ad-hoc","Reunión","Otro"]
+               "Data quality SAP","Análisis ad-hoc","Reunión","PBI","Otro"]
 PRIORIDADES = ["🔴 Alta","🟡 Media","🟢 Baja"]
 ESTADOS     = ["Pendiente","En progreso","Completada","Bloqueada"]
 COLUMNAS    = ["id","fecha","fecha_limite","usuario","tipo","marca","pais","descripcion",
