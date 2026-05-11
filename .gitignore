@@ -1,0 +1,17 @@
+# Datos — no subir a GitHub
+tasks.csv
+
+# Secretos de Streamlit
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.venv/
+venv/
+
+# Sistema
+.DS_Store
+Thumbs.db
