@@ -29,10 +29,10 @@ _USER_AREAS = {
     "JC Salazar": ["Compras"],
     "Chema":      ["BI","Compras"],
     "JC Letona":  ["BI"],
-    "Allison":    ["Distribución"],
-    "Karen":      ["Distribución"],
+    "Allison":    ["Insumos"],
+    "Karen":      ["Insumos"],
     "José David": ["Distribución"],
-    "Manuel":     ["BI","Distribución","Insumos","Compras"],
+    "Manuel":     ["BI","Compras"],
 }
 
 # ── Auth — paso 1: contraseña · paso 2: selección de usuario ─────────────────
