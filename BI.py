@@ -504,7 +504,11 @@ with t1:
     with cw:
         st.markdown("<div class='section-title'>Carga activa</div>", unsafe_allow_html=True)
         activas = df_f[df_f["estado"].isin(["Pendiente","En progreso"])]
-        carga   = activas.groupby("usuario").size().reindex(USUARIOS, fill_value=0)
+        if area_sel == "Todas":
+            usuarios_carga = USUARIOS
+        else:
+            usuarios_carga = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
+        carga = activas.groupby("usuario").size().reindex(usuarios_carga, fill_value=0)
         for u, n in carga.items():
             c_c = C_GREEN if n <= 3 else (C_AMBER if n <= 6 else C_RED)
             b_c = "🟢" if n <= 3 else ("🟡" if n <= 6 else "🔴")
