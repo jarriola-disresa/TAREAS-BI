@@ -329,9 +329,14 @@ with t_new:
         st.markdown("### Registrar nueva tarea")
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Usuario FUERA del form: al cambiar hace rerun y actualiza áreas disponibles
-        usuario_sel      = st.selectbox("👤 ¿Quién registra esta tarea?", USUARIOS,
-                                        key="usuario_nueva")
+        # Solo muestra usuarios que pertenecen al área seleccionada
+        if area_sel == "Todas":
+            usuarios_opciones = USUARIOS
+        else:
+            usuarios_opciones = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
+
+        usuario_sel       = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
+                                         key="usuario_nueva")
         areas_disponibles = USER_AREAS.get(usuario_sel, AREAS)
 
         with st.form("form_nueva", clear_on_submit=True):
