@@ -35,47 +35,27 @@ _USER_AREAS = {
     "Manuel":     ["BI","Compras"],
 }
 
-# ── Auth — paso 1: contraseña · paso 2: selección de usuario ─────────────────
-def _check_auth() -> bool:
-    # Paso 1: contraseña
-    if not st.session_state.get("authenticated"):
-        st.markdown(
-            "<h2 style='text-align:center;margin-top:80px'>🔐 Gestión de Tareas — Disresa</h2>",
-            unsafe_allow_html=True,
-        )
-        col = st.columns([1, 1, 1])[1]
-        with col:
-            pwd = st.text_input("Contraseña", type="password", key="_pwd")
-            if st.button("Ingresar", use_container_width=True, type="primary"):
-                if hashlib.sha256(pwd.encode()).hexdigest() == st.secrets["PASSWORD_HASH"]:
-                    st.session_state.authenticated = True
-                    st.rerun()
-                else:
-                    st.error("Contraseña incorrecta")
-        return False
+# ── Auth ──────────────────────────────────────────────────────────────────────
+def _check_password() -> bool:
+    if st.session_state.get("authenticated"):
+        return True
+    st.markdown(
+        "<h2 style='text-align:center;margin-top:80px'>🔐 Gestión de Tareas — Disresa</h2>",
+        unsafe_allow_html=True,
+    )
+    col = st.columns([1, 1, 1])[1]
+    with col:
+        pwd = st.text_input("Contraseña", type="password", key="_pwd")
+        if st.button("Ingresar", use_container_width=True, type="primary"):
+            if hashlib.sha256(pwd.encode()).hexdigest() == st.secrets["PASSWORD_HASH"]:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta")
+    return False
 
-    # Paso 2: selección de usuario
-    if not st.session_state.get("usuario_actual"):
-        st.markdown(
-            "<h2 style='text-align:center;margin-top:60px'>👤 ¿Quién eres?</h2>",
-            unsafe_allow_html=True,
-        )
-        cols = st.columns([1, 2, 1])
-        with cols[1]:
-            for u in _USUARIOS_LOGIN:
-                areas = " · ".join(_USER_AREAS.get(u, []))
-                if st.button(f"**{u}**  —  {areas}", use_container_width=True, key=f"sel_{u}"):
-                    st.session_state.usuario_actual = u
-                    st.rerun()
-        return False
-
-    return True
-
-if not _check_auth():
+if not _check_password():
     st.stop()
-
-USUARIO_ACTUAL  = st.session_state.usuario_actual
-AREAS_PERMITIDAS = _USER_AREAS.get(USUARIO_ACTUAL, [])
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -267,12 +247,6 @@ with st.sidebar:
         <div style='color:#64748B;font-size:.74rem'>Disresa · {date.today().strftime("%d %b %Y")}</div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown(user_badge(USUARIO_ACTUAL), unsafe_allow_html=True)
-    areas_txt = " · ".join(AREAS_PERMITIDAS)
-    st.caption(f"Áreas: {areas_txt}")
-    if st.button("🚪 Cerrar sesión", use_container_width=True):
-        st.session_state.usuario_actual = None
-        st.rerun()
     st.divider()
 
     if not df_all.empty:
@@ -355,19 +329,22 @@ with t_new:
         st.markdown("### Registrar nueva tarea")
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # Usuario FUERA del form: al cambiar hace rerun y actualiza áreas disponibles
+        usuario_sel      = st.selectbox("👤 ¿Quién registra esta tarea?", USUARIOS,
+                                        key="usuario_nueva")
+        areas_disponibles = USER_AREAS.get(usuario_sel, AREAS)
+
         with st.form("form_nueva", clear_on_submit=True):
             desc = st.text_area("📝 Descripción *",
                                 placeholder="¿Qué tarea vas a registrar?",
                                 height=100)
 
-            r1a, r1b, r1c, r1d, r1e = st.columns(5)
-            areas_form   = AREAS_PERMITIDAS
-            area_default = areas_form.index(area_sel) if area_sel in areas_form else 0
-            area_form = r1a.selectbox("🏢 Área", areas_form, index=area_default)
-            usuario   = r1b.selectbox("👤 Asignado a",  USUARIOS)
-            prior     = r1c.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
-            estado    = r1d.selectbox("📌 Estado",      ESTADOS)
-            fecha_n   = r1e.date_input("📅 Inicio",     value=date.today())
+            r1a, r1b, r1c, r1d = st.columns(4)
+            area_default = areas_disponibles.index(area_sel) if area_sel in areas_disponibles else 0
+            area_form = r1a.selectbox("🏢 Área", areas_disponibles, index=area_default)
+            prior     = r1b.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
+            estado    = r1c.selectbox("📌 Estado",      ESTADOS)
+            fecha_n   = r1d.date_input("📅 Inicio",     value=date.today())
 
             r2a, r2b, r2c, r2d = st.columns(4)
             tipo      = sel_o_escribe("🗂️ Tipo de tarea", TIPOS,   "tipo_n",  r2a)
@@ -393,7 +370,7 @@ with t_new:
             else:
                 guardar_tarea({
                     "fecha": fecha_n, "fecha_limite": fecha_lim,
-                    "area": area_form, "usuario": usuario, "tipo": tipo,
+                    "area": area_form, "usuario": usuario_sel, "tipo": tipo,
                     "marca": marca, "pais": pais, "descripcion": desc.strip(),
                     "prioridad": prior, "estado": estado,
                     "tiempo_min": int(t_real), "tiempo_estimado_min": int(t_est),
@@ -876,8 +853,7 @@ with t5:
 with t6:
     st.markdown("<div class='section-title'>Editar · Actualizar · Eliminar</div>",
                 unsafe_allow_html=True)
-    # Solo puede editar tareas de sus áreas permitidas
-    df_gestionar = df_f[df_f["area"].isin(AREAS_PERMITIDAS)]
+    df_gestionar = df_f.copy()
     if df_gestionar.empty:
         st.info("No tienes tareas para editar con los filtros actuales.")
     else:
