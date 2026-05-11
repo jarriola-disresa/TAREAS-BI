@@ -676,9 +676,15 @@ with t_gantt:
                 legend=dict(orientation="h", y=1.04),
                 xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
             )
-            fig.add_vline(x=str(date.today()), line_dash="dash",
-                          line_color=C_RED, line_width=1.5,
-                          annotation_text="Hoy", annotation_position="top right")
+            hoy_str = str(date.today())
+            fig.add_shape(type="line",
+                          x0=hoy_str, x1=hoy_str, y0=0, y1=1,
+                          xref="x", yref="paper",
+                          line=dict(color=C_RED, width=1.5, dash="dash"))
+            fig.add_annotation(x=hoy_str, y=1, xref="x", yref="paper",
+                               text="Hoy", showarrow=False,
+                               font=dict(color=C_RED, size=11),
+                               yanchor="bottom")
             st.plotly_chart(fig, use_container_width=True)
 
             st.caption(f"⚪ Las tareas sin fecha límite se muestran como barra de 1 día. "
