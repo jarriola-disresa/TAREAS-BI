@@ -117,7 +117,7 @@ TIPOS       = ["Reporte sell-through","Automatización Python","ETL / Airflow",
                "Data quality SAP","Análisis ad-hoc","Reunión","Otro"]
 PRIORIDADES = ["🔴 Alta","🟡 Media","🟢 Baja"]
 ESTADOS     = ["Pendiente","En progreso","Completada","Bloqueada"]
-COLUMNAS    = ["id","fecha","usuario","tipo","marca","pais","descripcion",
+COLUMNAS    = ["id","fecha","fecha_limite","usuario","tipo","marca","pais","descripcion",
                "prioridad","estado","tiempo_min","tiempo_estimado_min","notas","creado_en"]
 
 # ── Data layer ────────────────────────────────────────────────────────────────
@@ -126,11 +126,12 @@ def cargar_datos() -> pd.DataFrame:
         pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False)
         return pd.DataFrame(columns=COLUMNAS)
     df = pd.read_csv(DATA_FILE)
-    for col, default in [("tiempo_estimado_min", 0), ("notas", "")]:
+    for col, default in [("tiempo_estimado_min", 0), ("notas", ""), ("fecha_limite", None)]:
         if col not in df.columns:
             df[col] = default
     if not df.empty:
         df["fecha"]               = pd.to_datetime(df["fecha"]).dt.date
+        df["fecha_limite"]        = pd.to_datetime(df["fecha_limite"], errors="coerce").dt.date
         df["tiempo_min"]          = pd.to_numeric(df["tiempo_min"],          errors="coerce").fillna(0).astype(int)
         df["tiempo_estimado_min"] = pd.to_numeric(df["tiempo_estimado_min"], errors="coerce").fillna(0).astype(int)
         df["notas"]               = df["notas"].fillna("")
@@ -242,10 +243,10 @@ if not df_all.empty:
 st.divider()
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-t_new, t1, t2, t3, t4, t5, t6 = st.tabs([
+t_new, t1, t2, t3, t4, t_gantt, t5, t6 = st.tabs([
     "➕ Nueva Tarea",
     "🏠 Overview", "📈 Análisis", "👥 Equipo",
-    "🗓️ Actividad", "📋 Registros", "⚙️ Gestionar"
+    "🗓️ Actividad", "📅 Gantt", "📋 Registros", "⚙️ Gestionar"
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -266,13 +267,14 @@ with t_new:
             r1a, r1b, r1c, r1d = st.columns(4)
             usuario  = r1a.selectbox("👤 Asignado a",  USUARIOS)
             prior    = r1b.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
-            estado   = r1c.selectbox("📌 Estado",      ESTADOS)
-            fecha_n  = r1d.date_input("📅 Fecha",      value=date.today())
+            estado      = r1c.selectbox("📌 Estado",         ESTADOS)
+            fecha_n     = r1d.date_input("📅 Inicio",        value=date.today())
 
-            r2a, r2b, r2c = st.columns(3)
-            tipo  = r2a.selectbox("🗂️ Tipo de tarea", TIPOS)
-            marca = r2b.selectbox("👟 Marca",          MARCAS)
-            pais  = r2c.selectbox("🌎 País",           PAISES)
+            r2a, r2b, r2c, r2d = st.columns(4)
+            tipo        = r2a.selectbox("🗂️ Tipo de tarea",  TIPOS)
+            marca       = r2b.selectbox("👟 Marca",           MARCAS)
+            pais        = r2c.selectbox("🌎 País",            PAISES)
+            fecha_lim   = r2d.date_input("🏁 Fecha límite",  value=date.today() + timedelta(days=7))
 
             r3a, r3b, r3c = st.columns(3)
             t_real = r3a.number_input("⏱️ Tiempo real (min)",  min_value=0, value=0, step=15)
@@ -291,7 +293,8 @@ with t_new:
                 st.error("La descripción no puede estar vacía.")
             else:
                 guardar_tarea({
-                    "fecha": fecha_n, "usuario": usuario, "tipo": tipo,
+                    "fecha": fecha_n, "fecha_limite": fecha_lim,
+                    "usuario": usuario, "tipo": tipo,
                     "marca": marca, "pais": pais, "descripcion": desc.strip(),
                     "prioridad": prior, "estado": estado,
                     "tiempo_min": int(t_real), "tiempo_estimado_min": int(t_est),
@@ -611,6 +614,77 @@ with t4:
     st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TAB GANTT
+# ══════════════════════════════════════════════════════════════════════════════
+with t_gantt:
+    df_g = df_f[df_f["fecha_limite"].notna()].copy()
+
+    if df_g.empty:
+        st.info("Ninguna tarea tiene fecha límite aún. Agrégala al crear o editar una tarea.")
+    else:
+        # Controles
+        gc1, gc2 = st.columns(2)
+        g_color  = gc1.radio("Colorear por", ["Usuario", "Estado", "Prioridad"], horizontal=True)
+        g_solo_activas = gc2.checkbox("Solo tareas activas (sin Completadas)", value=False)
+
+        if g_solo_activas:
+            df_g = df_g[df_g["estado"] != "Completada"]
+
+        df_g["Start"]  = pd.to_datetime(df_g["fecha"])
+        df_g["Finish"] = pd.to_datetime(df_g["fecha_limite"])
+        df_g = df_g[df_g["Finish"] >= df_g["Start"]]
+        df_g["label"]  = df_g.apply(
+            lambda r: f"#{int(r['id'])} {r['descripcion'][:40]}", axis=1
+        )
+
+        color_col = {"Usuario": "usuario", "Estado": "estado", "Prioridad": "prioridad"}[g_color]
+        color_map = {
+            "Chema": C_BLUE, "JC": C_GREEN,
+            "Completada": C_GREEN, "En progreso": C_BLUE,
+            "Pendiente": C_AMBER, "Bloqueada": C_RED,
+            "🔴 Alta": C_RED, "🟡 Media": C_AMBER, "🟢 Baja": C_GREEN,
+        }
+
+        fig = px.timeline(
+            df_g.sort_values("Start"),
+            x_start="Start", x_end="Finish",
+            y="label",
+            color=color_col,
+            color_discrete_map=color_map,
+            hover_data={"usuario": True, "tipo": True, "marca": True,
+                        "estado": True, "prioridad": True, "label": False},
+            labels={"label": "", "Start": "Inicio", "Finish": "Límite"},
+        )
+        fig.update_yaxes(autorange="reversed")
+        fig.update_layout(
+            **CL,
+            height=max(350, len(df_g) * 38),
+            legend=dict(orientation="h", y=1.04),
+            xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
+        )
+        # Línea vertical de hoy
+        fig.add_vline(x=str(date.today()), line_dash="dash",
+                      line_color=C_RED, line_width=1.5,
+                      annotation_text="Hoy", annotation_position="top")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Tareas vencidas
+        vencidas = df_g[(df_g["Finish"].dt.date < date.today()) &
+                        (df_g["estado"] != "Completada")]
+        if not vencidas.empty:
+            st.markdown(f"<div class='section-title' style='--cc:{C_RED};color:{C_RED}'>⚠️ {len(vencidas)} tarea(s) vencida(s)</div>",
+                        unsafe_allow_html=True)
+            for _, r in vencidas.iterrows():
+                badge = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
+                dias_v = (date.today() - r["Finish"].date()).days
+                st.markdown(f"""
+                <div class='alert-blocked'>
+                    <b>#{int(r['id'])}</b> · <span class='{badge}'>{r['usuario']}</span>
+                    · <b>{r['descripcion'][:70]}</b>
+                    · <span style='color:{C_RED};font-weight:700'>Vencida hace {dias_v} día(s)</span>
+                </div>""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — REGISTROS
 # ══════════════════════════════════════════════════════════════════════════════
 with t5:
@@ -668,14 +742,17 @@ with t6:
                 with st.form(f"edit_{rid}"):
                     ea, eb = st.columns(2)
                     with ea:
-                        nf  = st.date_input("Fecha",      value=pd.to_datetime(row["fecha"]).date(), key=f"f_{rid}")
-                        nu  = st.selectbox("Asignado a",  USUARIOS,    index=USUARIOS.index(row["usuario"])       if row["usuario"]    in USUARIOS    else 0, key=f"u_{rid}")
-                        nt  = st.selectbox("Tipo",        TIPOS,       index=TIPOS.index(row["tipo"])             if row["tipo"]        in TIPOS       else 0, key=f"t_{rid}")
-                        ne  = st.selectbox("Estado",      ESTADOS,     index=ESTADOS.index(row["estado"])         if row["estado"]      in ESTADOS     else 0, key=f"e_{rid}")
+                        nf   = st.date_input("📅 Inicio",     value=pd.to_datetime(row["fecha"]).date(), key=f"f_{rid}")
+                        nfl  = st.date_input("🏁 Fecha límite",
+                                             value=pd.to_datetime(row["fecha_limite"]).date() if pd.notna(row["fecha_limite"]) else date.today() + timedelta(days=7),
+                                             key=f"fl_{rid}")
+                        nu   = st.selectbox("Asignado a",  USUARIOS,    index=USUARIOS.index(row["usuario"])       if row["usuario"]    in USUARIOS    else 0, key=f"u_{rid}")
+                        nt   = st.selectbox("Tipo",        TIPOS,       index=TIPOS.index(row["tipo"])             if row["tipo"]        in TIPOS       else 0, key=f"t_{rid}")
+                        ne   = st.selectbox("Estado",      ESTADOS,     index=ESTADOS.index(row["estado"])         if row["estado"]      in ESTADOS     else 0, key=f"e_{rid}")
                     with eb:
-                        nm  = st.selectbox("Marca",       MARCAS,      index=MARCAS.index(row["marca"])           if row["marca"]       in MARCAS      else 0, key=f"m_{rid}")
-                        np_ = st.selectbox("País",        PAISES,      index=PAISES.index(row["pais"])            if row["pais"]        in PAISES      else 0, key=f"p_{rid}")
-                        npr = st.selectbox("Prioridad",   PRIORIDADES, index=PRIORIDADES.index(row["prioridad"])  if row["prioridad"]   in PRIORIDADES else 1, key=f"pr_{rid}")
+                        nm   = st.selectbox("Marca",       MARCAS,      index=MARCAS.index(row["marca"])           if row["marca"]       in MARCAS      else 0, key=f"m_{rid}")
+                        np_  = st.selectbox("País",        PAISES,      index=PAISES.index(row["pais"])            if row["pais"]        in PAISES      else 0, key=f"p_{rid}")
+                        npr  = st.selectbox("Prioridad",   PRIORIDADES, index=PRIORIDADES.index(row["prioridad"])  if row["prioridad"]   in PRIORIDADES else 1, key=f"pr_{rid}")
                     nd  = st.text_area("Descripción", value=row["descripcion"], key=f"d_{rid}")
                     ec2, ed2 = st.columns(2)
                     ntr = ec2.number_input("Tiempo real (min)",  min_value=0, value=int(row["tiempo_min"]),          step=15, key=f"tr_{rid}")
@@ -687,7 +764,8 @@ with t6:
 
                 if guardar:
                     actualizar_tarea(rid, {
-                        "fecha": nf, "usuario": nu, "tipo": nt,
+                        "fecha": nf, "fecha_limite": nfl,
+                        "usuario": nu, "tipo": nt,
                         "marca": nm, "pais": np_, "descripcion": nd.strip(),
                         "prioridad": npr, "estado": ne,
                         "tiempo_min": ntr, "tiempo_estimado_min": nte,
