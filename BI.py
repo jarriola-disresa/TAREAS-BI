@@ -183,6 +183,14 @@ def color_prioridad(p):
     if "Media" in str(p): return C_AMBER
     return C_GREEN
 
+def sel_o_escribe(label, opciones, key, col=None):
+    """Selectbox + campo libre opcional. Si el usuario escribe algo, tiene prioridad."""
+    c = col or st
+    val = c.selectbox(label, opciones, key=f"sel_{key}")
+    txt = c.text_input("", placeholder="✏️ Otro — escribe aquí...",
+                       key=f"txt_{key}", label_visibility="collapsed")
+    return txt.strip() if txt.strip() else val
+
 # ── Carga única de datos (se refresca completa en cada st.rerun) ──────────────
 df_all = cargar_datos()
 
@@ -271,10 +279,10 @@ with t_new:
             fecha_n     = r1d.date_input("📅 Inicio",        value=date.today())
 
             r2a, r2b, r2c, r2d = st.columns(4)
-            tipo        = r2a.selectbox("🗂️ Tipo de tarea",  TIPOS)
-            marca       = r2b.selectbox("👟 Marca",           MARCAS)
-            pais        = r2c.selectbox("🌎 País",            PAISES)
-            fecha_lim   = r2d.date_input("🏁 Fecha límite",  value=date.today() + timedelta(days=7))
+            tipo      = sel_o_escribe("🗂️ Tipo de tarea", TIPOS,   "tipo_n",  r2a)
+            marca     = sel_o_escribe("👟 Marca",          MARCAS,  "marca_n", r2b)
+            pais      = sel_o_escribe("🌎 País",           PAISES,  "pais_n",  r2c)
+            fecha_lim = r2d.date_input("🏁 Fecha límite",  value=date.today() + timedelta(days=7))
 
             r3a, r3b, r3c = st.columns(3)
             t_real = r3a.number_input("⏱️ Tiempo real (min)",  min_value=0, value=0, step=15)
@@ -726,9 +734,11 @@ with t5:
                 unsafe_allow_html=True)
 
     def row_color(row):
-        if "Alta"  in str(row["prioridad"]): bg = "#FEE2E2"
-        elif "Media" in str(row["prioridad"]): bg = "#FEF9C3"
-        else: bg = "#F0FDF4"
+        estado = str(row["estado"])
+        if estado == "Completada":   bg = "#D1FAE5"  # verde
+        elif estado == "En progreso": bg = "#FEF9C3"  # amarillo
+        elif estado == "Bloqueada":   bg = "#FEE2E2"  # rojo
+        else:                         bg = "#F8FAFC"  # gris claro (Pendiente)
         return [f"background-color:{bg}"] * len(row)
 
     styled = (df_tabla.sort_values("fecha", ascending=False)
@@ -773,11 +783,11 @@ with t6:
                                              value=pd.to_datetime(row["fecha_limite"]).date() if pd.notna(row["fecha_limite"]) else date.today() + timedelta(days=7),
                                              key=f"fl_{rid}")
                         nu   = st.selectbox("Asignado a",  USUARIOS,    index=USUARIOS.index(row["usuario"])       if row["usuario"]    in USUARIOS    else 0, key=f"u_{rid}")
-                        nt   = st.selectbox("Tipo",        TIPOS,       index=TIPOS.index(row["tipo"])             if row["tipo"]        in TIPOS       else 0, key=f"t_{rid}")
-                        ne   = st.selectbox("Estado",      ESTADOS,     index=ESTADOS.index(row["estado"])         if row["estado"]      in ESTADOS     else 0, key=f"e_{rid}")
+                        nt   = sel_o_escribe("Tipo",  TIPOS,  f"t_{rid}",  ea)
+                        ne   = st.selectbox("Estado", ESTADOS, index=ESTADOS.index(row["estado"]) if row["estado"] in ESTADOS else 0, key=f"e_{rid}")
                     with eb:
-                        nm   = st.selectbox("Marca",       MARCAS,      index=MARCAS.index(row["marca"])           if row["marca"]       in MARCAS      else 0, key=f"m_{rid}")
-                        np_  = st.selectbox("País",        PAISES,      index=PAISES.index(row["pais"])            if row["pais"]        in PAISES      else 0, key=f"p_{rid}")
+                        nm   = sel_o_escribe("Marca", MARCAS, f"m_{rid}", eb)
+                        np_  = sel_o_escribe("País",  PAISES, f"p_{rid}", eb)
                         npr  = st.selectbox("Prioridad",   PRIORIDADES, index=PRIORIDADES.index(row["prioridad"])  if row["prioridad"]   in PRIORIDADES else 1, key=f"pr_{rid}")
                     nd  = st.text_area("Descripción", value=row["descripcion"], key=f"d_{rid}")
                     ec2, ed2 = st.columns(2)
