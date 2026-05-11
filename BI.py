@@ -623,8 +623,8 @@ with t_gantt:
         # ── Controles ─────────────────────────────────────────────────────────
         gc1, gc2, gc3 = st.columns(3)
         g_color    = gc1.radio("Colorear por", ["Estado", "Usuario", "Prioridad"], horizontal=True)
-        g_estados  = gc2.multiselect("Mostrar estados", ESTADOS, default=ESTADOS)
-        g_usuarios = gc3.multiselect("Mostrar usuarios", USUARIOS, default=USUARIOS)
+        g_estados  = gc2.multiselect("Filtrar estados",  ESTADOS,  default=[])
+        g_usuarios = gc3.multiselect("Filtrar usuarios", USUARIOS, default=[])
 
         # Todas las tareas — sin fecha_limite usan fecha+1 día como barra mínima
         df_g = df_f.copy()
@@ -640,7 +640,7 @@ with t_gantt:
         )
         df_g["sin_limite"] = df_f["fecha_limite"].isna() | (df_f["fecha_limite"] == df_f["fecha"])
 
-        # Aplicar filtros de estado y usuario
+        # Filtros: vacío = mostrar todos
         if g_estados:
             df_g = df_g[df_g["estado"].isin(g_estados)]
         if g_usuarios:
