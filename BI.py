@@ -617,72 +617,92 @@ with t4:
 # TAB GANTT
 # ══════════════════════════════════════════════════════════════════════════════
 with t_gantt:
-    df_g = df_f[df_f["fecha_limite"].notna()].copy()
-
-    if df_g.empty:
-        st.info("Ninguna tarea tiene fecha límite aún. Agrégala al crear o editar una tarea.")
+    if df_f.empty:
+        st.info("No hay tareas con los filtros actuales.")
     else:
-        # Controles
-        gc1, gc2 = st.columns(2)
-        g_color  = gc1.radio("Colorear por", ["Usuario", "Estado", "Prioridad"], horizontal=True)
-        g_solo_activas = gc2.checkbox("Solo tareas activas (sin Completadas)", value=False)
+        # ── Controles ─────────────────────────────────────────────────────────
+        gc1, gc2, gc3 = st.columns(3)
+        g_color    = gc1.radio("Colorear por", ["Estado", "Usuario", "Prioridad"], horizontal=True)
+        g_estados  = gc2.multiselect("Mostrar estados", ESTADOS, default=ESTADOS)
+        g_usuarios = gc3.multiselect("Mostrar usuarios", USUARIOS, default=USUARIOS)
 
-        if g_solo_activas:
-            df_g = df_g[df_g["estado"] != "Completada"]
-
+        # Todas las tareas — sin fecha_limite usan fecha+1 día como barra mínima
+        df_g = df_f.copy()
         df_g["Start"]  = pd.to_datetime(df_g["fecha"])
-        df_g["Finish"] = pd.to_datetime(df_g["fecha_limite"])
-        df_g = df_g[df_g["Finish"] >= df_g["Start"]]
-        df_g["label"]  = df_g.apply(
-            lambda r: f"#{int(r['id'])} {r['descripcion'][:40]}", axis=1
+        df_g["Finish"] = df_g.apply(
+            lambda r: pd.to_datetime(r["fecha_limite"])
+            if pd.notna(r["fecha_limite"]) and r["fecha_limite"] != r["fecha"]
+            else pd.to_datetime(r["fecha"]) + pd.Timedelta(days=1),
+            axis=1,
         )
-
-        color_col = {"Usuario": "usuario", "Estado": "estado", "Prioridad": "prioridad"}[g_color]
-        color_map = {
-            "Chema": C_BLUE, "JC": C_GREEN,
-            "Completada": C_GREEN, "En progreso": C_BLUE,
-            "Pendiente": C_AMBER, "Bloqueada": C_RED,
-            "🔴 Alta": C_RED, "🟡 Media": C_AMBER, "🟢 Baja": C_GREEN,
-        }
-
-        fig = px.timeline(
-            df_g.sort_values("Start"),
-            x_start="Start", x_end="Finish",
-            y="label",
-            color=color_col,
-            color_discrete_map=color_map,
-            hover_data={"usuario": True, "tipo": True, "marca": True,
-                        "estado": True, "prioridad": True, "label": False},
-            labels={"label": "", "Start": "Inicio", "Finish": "Límite"},
+        df_g["label"] = df_g.apply(
+            lambda r: f"#{int(r['id'])}  {r['descripcion'][:45]}", axis=1
         )
-        fig.update_yaxes(autorange="reversed")
-        fig.update_layout(
-            **CL,
-            height=max(350, len(df_g) * 38),
-            legend=dict(orientation="h", y=1.04),
-            xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
-        )
-        # Línea vertical de hoy
-        fig.add_vline(x=str(date.today()), line_dash="dash",
-                      line_color=C_RED, line_width=1.5,
-                      annotation_text="Hoy", annotation_position="top")
-        st.plotly_chart(fig, use_container_width=True)
+        df_g["sin_limite"] = df_f["fecha_limite"].isna() | (df_f["fecha_limite"] == df_f["fecha"])
 
-        # Tareas vencidas
-        vencidas = df_g[(df_g["Finish"].dt.date < date.today()) &
-                        (df_g["estado"] != "Completada")]
-        if not vencidas.empty:
-            st.markdown(f"<div class='section-title' style='--cc:{C_RED};color:{C_RED}'>⚠️ {len(vencidas)} tarea(s) vencida(s)</div>",
-                        unsafe_allow_html=True)
-            for _, r in vencidas.iterrows():
-                badge = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
-                dias_v = (date.today() - r["Finish"].date()).days
-                st.markdown(f"""
-                <div class='alert-blocked'>
-                    <b>#{int(r['id'])}</b> · <span class='{badge}'>{r['usuario']}</span>
-                    · <b>{r['descripcion'][:70]}</b>
-                    · <span style='color:{C_RED};font-weight:700'>Vencida hace {dias_v} día(s)</span>
-                </div>""", unsafe_allow_html=True)
+        # Aplicar filtros de estado y usuario
+        if g_estados:
+            df_g = df_g[df_g["estado"].isin(g_estados)]
+        if g_usuarios:
+            df_g = df_g[df_g["usuario"].isin(g_usuarios)]
+
+        if df_g.empty:
+            st.info("No hay tareas con esos filtros.")
+        else:
+            color_col = {"Estado": "estado", "Usuario": "usuario", "Prioridad": "prioridad"}[g_color]
+            color_map = {
+                "Chema": C_BLUE,      "JC": C_GREEN,
+                "Completada": C_GREEN, "En progreso": C_BLUE,
+                "Pendiente": C_AMBER,  "Bloqueada": C_RED,
+                "🔴 Alta": C_RED,     "🟡 Media": C_AMBER, "🟢 Baja": C_GREEN,
+            }
+
+            fig = px.timeline(
+                df_g.sort_values(["estado", "Start"]),
+                x_start="Start", x_end="Finish",
+                y="label",
+                color=color_col,
+                color_discrete_map=color_map,
+                hover_data={"usuario": True, "tipo": True, "marca": True,
+                            "estado": True, "prioridad": True,
+                            "sin_limite": True, "label": False},
+                labels={"label": "", "Start": "Inicio", "Finish": "Límite",
+                        "sin_limite": "Sin fecha límite"},
+            )
+            fig.update_yaxes(autorange="reversed")
+            fig.update_layout(
+                **CL,
+                height=max(380, len(df_g) * 36),
+                legend=dict(orientation="h", y=1.04),
+                xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
+            )
+            fig.add_vline(x=str(date.today()), line_dash="dash",
+                          line_color=C_RED, line_width=1.5,
+                          annotation_text="Hoy", annotation_position="top right")
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.caption(f"⚪ Las tareas sin fecha límite se muestran como barra de 1 día. "
+                       f"Agrégala en ⚙️ Gestionar para ver su duración real.")
+
+            # ── Tareas vencidas ────────────────────────────────────────────────
+            vencidas = df_g[
+                (df_g["Finish"].dt.date < date.today()) &
+                (df_g["estado"] != "Completada") &
+                (~df_g["sin_limite"])
+            ]
+            if not vencidas.empty:
+                st.markdown(
+                    f"<div class='section-title' style='color:{C_RED}'>⚠️ {len(vencidas)} tarea(s) vencida(s)</div>",
+                    unsafe_allow_html=True)
+                for _, r in vencidas.iterrows():
+                    badge  = "badge-chema" if r["usuario"] == "Chema" else "badge-jc"
+                    dias_v = (date.today() - r["Finish"].dt.date if hasattr(r["Finish"], "dt") else (date.today() - r["Finish"].date())).days
+                    st.markdown(f"""
+                    <div class='alert-blocked'>
+                        <b>#{int(r['id'])}</b> · <span class='{badge}'>{r['usuario']}</span>
+                        · <b>{r['descripcion'][:70]}</b>
+                        · <span style='color:{C_RED};font-weight:700'>Vencida hace {(date.today() - r["Finish"].date())} día(s)</span>
+                    </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — REGISTROS
