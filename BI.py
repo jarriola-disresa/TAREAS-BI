@@ -297,9 +297,13 @@ st.divider()
 # Filtrar por área seleccionada
 df_area = df_all[df_all["area"] == area_sel] if area_sel != "Todas" else df_all.copy()
 
-# ── Alertas bloqueadas ────────────────────────────────────────────────────────
+# ── Alertas ───────────────────────────────────────────────────────────────────
 if not df_area.empty:
-    bloq_df = df_area[df_area["estado"] == "Bloqueada"]
+    hoy      = date.today()
+    no_comp  = df_area[~df_area["estado"].isin(["Completada"])].copy()
+
+    # Bloqueadas
+    bloq_df  = no_comp[no_comp["estado"] == "Bloqueada"]
     if not bloq_df.empty:
         with st.expander(f"⚠️  {len(bloq_df)} tarea(s) BLOQUEADA(s) — requieren atención", expanded=True):
             for _, r in bloq_df.iterrows():
@@ -308,6 +312,42 @@ if not df_area.empty:
                 <div class='alert-blocked'>
                     <b>#{int(r['id'])}</b> · {user_badge(r['usuario'])}
                     · {r['tipo']} · <b>{r['descripcion'][:80]}</b>{nota}
+                </div>""", unsafe_allow_html=True)
+
+    # Vencidas (fecha_limite < hoy)
+    venc_df = no_comp[no_comp["fecha_limite"].notna() & (no_comp["fecha_limite"] < hoy)]
+    if not venc_df.empty:
+        with st.expander(f"🔴  {len(venc_df)} tarea(s) VENCIDA(s)", expanded=True):
+            for _, r in venc_df.iterrows():
+                dias_v = (hoy - r["fecha_limite"]).days
+                st.markdown(f"""
+                <div style='background:#FEE2E2;border-left:4px solid #EF4444;
+                            border-radius:8px;padding:10px 14px;margin-bottom:6px;
+                            color:#7F1D1D;font-size:.87rem'>
+                    <b>#{int(r['id'])}</b> · {user_badge(r['usuario'])}
+                    · <b>{r['descripcion'][:75]}</b>
+                    · <span style='font-weight:700'>Vencida hace {dias_v} día(s)
+                    (límite: {r['fecha_limite']})</span>
+                </div>""", unsafe_allow_html=True)
+
+    # Próximas a vencer (hoy + 3 días)
+    prox_df = no_comp[
+        no_comp["fecha_limite"].notna() &
+        (no_comp["fecha_limite"] >= hoy) &
+        (no_comp["fecha_limite"] <= hoy + timedelta(days=3))
+    ]
+    if not prox_df.empty:
+        with st.expander(f"🟠  {len(prox_df)} tarea(s) próxima(s) a vencer (≤ 3 días)", expanded=True):
+            for _, r in prox_df.iterrows():
+                dias_r = (r["fecha_limite"] - hoy).days
+                lbl = "Vence **hoy**" if dias_r == 0 else f"Vence en **{dias_r} día(s)**"
+                st.markdown(f"""
+                <div style='background:#FFF7ED;border-left:4px solid #F97316;
+                            border-radius:8px;padding:10px 14px;margin-bottom:6px;
+                            color:#7C2D12;font-size:.87rem'>
+                    <b>#{int(r['id'])}</b> · {user_badge(r['usuario'])}
+                    · <b>{r['descripcion'][:75]}</b>
+                    · {lbl} ({r['fecha_limite']})
                 </div>""", unsafe_allow_html=True)
 
 st.divider()
