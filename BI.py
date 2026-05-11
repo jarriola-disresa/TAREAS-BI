@@ -20,27 +20,62 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-def _check_password() -> bool:
-    if st.session_state.get("authenticated"):
-        return True
-    st.markdown(
-        "<h2 style='text-align:center;margin-top:80px'>🔐 Gestión de Tareas — Disresa</h2>",
-        unsafe_allow_html=True,
-    )
-    col = st.columns([1, 1, 1])[1]
-    with col:
-        pwd = st.text_input("Contraseña", type="password", key="_pwd")
-        if st.button("Ingresar", use_container_width=True, type="primary"):
-            if hashlib.sha256(pwd.encode()).hexdigest() == st.secrets["PASSWORD_HASH"]:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Contraseña incorrecta")
-    return False
+# ── Usuarios y permisos (definidos antes del auth para usarlos en la pantalla de login) ──
+_USUARIOS_LOGIN = ["Sebas","Gilda","Karen","Allison","JC Salazar",
+                   "JC Letona","Chema","Manuel","José David"]
+_USER_AREAS = {
+    "Sebas":      ["BI","Distribución","Insumos","Compras"],
+    "Gilda":      ["Compras"],
+    "JC Salazar": ["Compras"],
+    "Chema":      ["BI","Compras"],
+    "JC Letona":  ["BI"],
+    "Allison":    ["Distribución"],
+    "Karen":      ["Distribución"],
+    "José David": ["Distribución"],
+    "Manuel":     ["BI","Distribución","Insumos","Compras"],
+}
 
-if not _check_password():
+# ── Auth — paso 1: contraseña · paso 2: selección de usuario ─────────────────
+def _check_auth() -> bool:
+    # Paso 1: contraseña
+    if not st.session_state.get("authenticated"):
+        st.markdown(
+            "<h2 style='text-align:center;margin-top:80px'>🔐 Gestión de Tareas — Disresa</h2>",
+            unsafe_allow_html=True,
+        )
+        col = st.columns([1, 1, 1])[1]
+        with col:
+            pwd = st.text_input("Contraseña", type="password", key="_pwd")
+            if st.button("Ingresar", use_container_width=True, type="primary"):
+                if hashlib.sha256(pwd.encode()).hexdigest() == st.secrets["PASSWORD_HASH"]:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta")
+        return False
+
+    # Paso 2: selección de usuario
+    if not st.session_state.get("usuario_actual"):
+        st.markdown(
+            "<h2 style='text-align:center;margin-top:60px'>👤 ¿Quién eres?</h2>",
+            unsafe_allow_html=True,
+        )
+        cols = st.columns([1, 2, 1])
+        with cols[1]:
+            for u in _USUARIOS_LOGIN:
+                areas = " · ".join(_USER_AREAS.get(u, []))
+                if st.button(f"**{u}**  —  {areas}", use_container_width=True, key=f"sel_{u}"):
+                    st.session_state.usuario_actual = u
+                    st.rerun()
+        return False
+
+    return True
+
+if not _check_auth():
     st.stop()
+
+USUARIO_ACTUAL  = st.session_state.usuario_actual
+AREAS_PERMITIDAS = _USER_AREAS.get(USUARIO_ACTUAL, [])
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -109,9 +144,11 @@ COLOR_ESTADO = {"Completada": C_GREEN, "En progreso": C_BLUE,
 # ── Catálogos ─────────────────────────────────────────────────────────────────
 DATA_FILE   = Path("tasks.csv")
 AREAS       = ["BI","Distribución","Insumos","Compras"]
-USUARIOS    = ["Chema","Sebas","Gilda","Karen","Allison","JC Salazar","JC Letona","Manuel"]
-MARCAS      = ["Skechers","Cole Haan","New Era","Columbia",
-               "Psycho Bunny","47 Brand","Fabletics","Multi-marca","N/A"]
+USUARIOS    = ["Sebas","Gilda","Karen","Allison","JC Salazar","JC Letona","Chema","Manuel","José David"]
+USER_AREAS  = _USER_AREAS
+MARCAS      = ["Skechers","New Era","Columbia","Psycho Bunny","47 Brand",
+               "Cole Haan","Birkenstock","Adolfo Dominguez","Montblanc","Fabletics",
+               "Multi-marca","N/A"]
 PAISES      = ["GT","SV","HN","CR","PA","RD","Regional","N/A"]
 TIPOS       = ["Reporte sell-through","Automatización Python","ETL / Airflow",
                "Reporte Excel","Presentación PPT","Email / Comunicación",
@@ -224,11 +261,19 @@ df_all = cargar_datos()
 # ── SIDEBAR — métricas rápidas ────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
-    <div style='text-align:center;padding:8px 0 18px'>
+    <div style='text-align:center;padding:8px 0 14px'>
         <div style='font-size:2rem'>📋</div>
         <div style='font-weight:700;color:#1B3A6B;font-size:1.05rem'>Gestión de Tareas</div>
         <div style='color:#64748B;font-size:.74rem'>Disresa · {date.today().strftime("%d %b %Y")}</div>
     </div>""", unsafe_allow_html=True)
+
+    st.markdown(user_badge(USUARIO_ACTUAL), unsafe_allow_html=True)
+    areas_txt = " · ".join(AREAS_PERMITIDAS)
+    st.caption(f"Áreas: {areas_txt}")
+    if st.button("🚪 Cerrar sesión", use_container_width=True):
+        st.session_state.usuario_actual = None
+        st.rerun()
+    st.divider()
 
     if not df_all.empty:
         hoy_n  = len(df_all[df_all["fecha"] == date.today()])
@@ -316,9 +361,9 @@ with t_new:
                                 height=100)
 
             r1a, r1b, r1c, r1d, r1e = st.columns(5)
-            area_form = r1a.selectbox("🏢 Área",
-                                      AREAS,
-                                      index=AREAS.index(area_sel) if area_sel in AREAS else 0)
+            areas_form   = AREAS_PERMITIDAS
+            area_default = areas_form.index(area_sel) if area_sel in areas_form else 0
+            area_form = r1a.selectbox("🏢 Área", areas_form, index=area_default)
             usuario   = r1b.selectbox("👤 Asignado a",  USUARIOS)
             prior     = r1c.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
             estado    = r1d.selectbox("📌 Estado",      ESTADOS)
@@ -417,7 +462,13 @@ if df_area.empty:
 
 with st.expander("🔍  Filtros adicionales", expanded=False):
     fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-    f_usr  = fc1.multiselect("Usuario", sorted(df_area["usuario"].unique()))
+    # Usuarios filtrados por área seleccionada
+    if area_sel == "Todas":
+        usuarios_del_area = sorted(df_area["usuario"].unique())
+    else:
+        usuarios_del_area = sorted([u for u, areas in USER_AREAS.items()
+                                    if area_sel in areas and u in df_area["usuario"].unique()])
+    f_usr  = fc1.multiselect("Usuario", usuarios_del_area)
     f_tipo = fc2.multiselect("Tipo",    sorted(df_area["tipo"].unique()))
     f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
     f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
@@ -825,10 +876,12 @@ with t5:
 with t6:
     st.markdown("<div class='section-title'>Editar · Actualizar · Eliminar</div>",
                 unsafe_allow_html=True)
-    if df_f.empty:
-        st.info("No hay tareas con los filtros actuales.")
+    # Solo puede editar tareas de sus áreas permitidas
+    df_gestionar = df_f[df_f["area"].isin(AREAS_PERMITIDAS)]
+    if df_gestionar.empty:
+        st.info("No tienes tareas para editar con los filtros actuales.")
     else:
-        for _, row in df_f.sort_values("fecha", ascending=False).head(30).iterrows():
+        for _, row in df_gestionar.sort_values("fecha", ascending=False).head(30).iterrows():
             rid   = int(row["id"])
             tc    = COLOR_ESTADO.get(row["estado"], C_GRAY)
             label = f"#{rid} · {row['fecha']} · {row['tipo']} — {row['descripcion'][:55]}"
