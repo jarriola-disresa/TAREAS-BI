@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 from pathlib import Path
 import io
+import requests as _req
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -122,7 +123,7 @@ COLOR_ESTADO = {"Completada": C_GREEN, "En progreso": C_BLUE,
                 "Pendiente": C_AMBER, "Bloqueada": C_RED}
 
 # ── Catálogos ─────────────────────────────────────────────────────────────────
-DATA_FILE   = Path("tasks.csv")
+DATA_FILE   = Path(__file__).parent / "tasks.csv"
 AREAS       = ["BI","Distribución","Insumos","Compras"]
 USUARIOS    = ["Sebas","Gilda","Karen","Allison","JC Salazar","JC Letona","Chema","Manuel","José David"]
 USER_AREAS  = _USER_AREAS
@@ -161,41 +162,82 @@ def user_badge(nombre):
     return f"<span style='background:{bg};color:{color};padding:2px 9px;border-radius:20px;font-size:.76rem;font-weight:700'>{nombre}</span>"
 
 # ── Data layer ────────────────────────────────────────────────────────────────
-def cargar_datos() -> pd.DataFrame:
-    if not DATA_FILE.exists():
-        pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False, sep=";")
-        return pd.DataFrame(columns=COLUMNAS)
-    # Detecta separador para compatibilidad con archivos viejos (coma) y nuevos (;)
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        sep = ";" if ";" in f.readline() else ","
-    df = pd.read_csv(DATA_FILE, sep=sep)
+try:
+    _USE_GIST = "GITHUB_TOKEN" in st.secrets and "GIST_ID" in st.secrets
+except Exception:
+    _USE_GIST = False
+
+def _gist_headers():
+    return {"Authorization": f"token {st.secrets['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github.v3+json"}
+
+def _gist_read() -> str:
+    r = _req.get(f"https://api.github.com/gists/{st.secrets['GIST_ID']}",
+                 headers=_gist_headers(), timeout=10)
+    r.raise_for_status()
+    return r.json()["files"]["tasks.csv"]["content"]
+
+def _gist_write(content: str):
+    _req.patch(f"https://api.github.com/gists/{st.secrets['GIST_ID']}",
+               headers=_gist_headers(),
+               json={"files": {"tasks.csv": {"content": content}}},
+               timeout=10).raise_for_status()
+
+def _procesar_df(df: pd.DataFrame) -> pd.DataFrame:
     for col, default in [("tiempo_estimado_min", 0), ("notas", ""),
                          ("fecha_limite", None), ("area", "BI")]:
         if col not in df.columns:
             df[col] = default
     if not df.empty:
-        df["fecha"]               = pd.to_datetime(df["fecha"]).dt.date
+        df["fecha"]               = pd.to_datetime(df["fecha"], errors="coerce").dt.date
         df["fecha_limite"]        = pd.to_datetime(df["fecha_limite"], errors="coerce").dt.date
         df["tiempo_min"]          = pd.to_numeric(df["tiempo_min"],          errors="coerce").fillna(0).astype(int)
         df["tiempo_estimado_min"] = pd.to_numeric(df["tiempo_estimado_min"], errors="coerce").fillna(0).astype(int)
         df["notas"]               = df["notas"].fillna("")
     return df
 
+@st.cache_data(ttl=30)
+def cargar_datos() -> pd.DataFrame:
+    if _USE_GIST:
+        df = pd.read_csv(io.StringIO(_gist_read()), sep=";")
+    else:
+        if not DATA_FILE.exists():
+            pd.DataFrame(columns=COLUMNAS).to_csv(DATA_FILE, index=False, sep=";")
+            return pd.DataFrame(columns=COLUMNAS)
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            sep = ";" if ";" in f.readline() else ","
+        df = pd.read_csv(DATA_FILE, sep=sep)
+    return _procesar_df(df)
+
 def guardar_tarea(nueva: dict):
     df = cargar_datos()
     nueva["id"]        = int(df["id"].max()) + 1 if not df.empty else 1
     nueva["creado_en"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    pd.concat([df, pd.DataFrame([nueva])], ignore_index=True).to_csv(DATA_FILE, index=False, sep=";")
+    df_new = pd.concat([df, pd.DataFrame([nueva])], ignore_index=True)
+    if _USE_GIST:
+        _gist_write(df_new.to_csv(index=False, sep=";"))
+    else:
+        df_new.to_csv(DATA_FILE, index=False, sep=";")
+    cargar_datos.clear()
 
 def actualizar_tarea(task_id: int, campos: dict):
     df = cargar_datos()
     for k, v in campos.items():
         df.loc[df["id"] == task_id, k] = v
-    df.to_csv(DATA_FILE, index=False, sep=";")
+    if _USE_GIST:
+        _gist_write(df.to_csv(index=False, sep=";"))
+    else:
+        df.to_csv(DATA_FILE, index=False, sep=";")
+    cargar_datos.clear()
 
 def eliminar_tarea(task_id: int):
     df = cargar_datos()
-    df[df["id"] != task_id].to_csv(DATA_FILE, index=False, sep=";")
+    df = df[df["id"] != task_id]
+    if _USE_GIST:
+        _gist_write(df.to_csv(index=False, sep=";"))
+    else:
+        df.to_csv(DATA_FILE, index=False, sep=";")
+    cargar_datos.clear()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def kpi(label, value, delta=None, color=C_BLUE):
