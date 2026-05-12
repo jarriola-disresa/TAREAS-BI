@@ -537,9 +537,7 @@ with st.expander("🔍  Filtros adicionales", expanded=False):
     f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
     f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
     f_est  = fc5.multiselect("Estado",  sorted(df_area["estado"].unique()))
-    rango  = st.date_input("Rango de fechas",
-                           value=(df_area["fecha"].min(), df_area["fecha"].max()),
-                           min_value=df_area["fecha"].min(), max_value=df_area["fecha"].max())
+    rango  = st.date_input("Rango de fechas", value=())
 
 df_f = df_area.copy()
 if f_usr:  df_f = df_f[df_f["usuario"].isin(f_usr)]
