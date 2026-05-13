@@ -272,10 +272,11 @@ def color_prioridad(p):
 def sel_o_escribe(label, opciones, key, col=None):
     """Selectbox + campo libre opcional. Si el usuario escribe algo, tiene prioridad."""
     c = col or st
-    val = c.selectbox(label, opciones, key=f"sel_{key}")
+    val = c.selectbox(label, opciones, index=None, placeholder="Selecciona...",
+                      key=f"sel_{key}")
     txt = c.text_input("", placeholder="✏️ Otro — escribe aquí...",
                        key=f"txt_{key}", label_visibility="collapsed")
-    return txt.strip() if txt.strip() else val
+    return txt.strip() if txt.strip() else (val or "")
 
 # ── Carga única de datos (se refresca completa en cada st.rerun) ──────────────
 df_all = cargar_datos()
@@ -331,6 +332,7 @@ area_sel = st.radio(
     "Área",
     ["Todas"] + AREAS,
     horizontal=True,
+    index=0,
     key="area_sel",
     label_visibility="collapsed",
 )
@@ -418,6 +420,7 @@ with t_new:
             usuarios_opciones = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
 
         usuario_sel       = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
+                                         index=None, placeholder="Selecciona usuario...",
                                          key="usuario_nueva")
         areas_disponibles = USER_AREAS.get(usuario_sel, AREAS)
 
@@ -427,10 +430,12 @@ with t_new:
                                 height=100)
 
             r1a, r1b, r1c, r1d = st.columns(4)
-            area_default = areas_disponibles.index(area_sel) if area_sel in areas_disponibles else 0
-            area_form = r1a.selectbox("🏢 Área", areas_disponibles, index=area_default)
-            prior     = r1b.selectbox("🚦 Prioridad",   PRIORIDADES, index=1)
-            estado    = r1c.selectbox("📌 Estado",      ESTADOS)
+            area_form = r1a.selectbox("🏢 Área", areas_disponibles,
+                                       index=None, placeholder="Selecciona...")
+            prior     = r1b.selectbox("🚦 Prioridad", PRIORIDADES,
+                                       index=None, placeholder="Selecciona...")
+            estado    = r1c.selectbox("📌 Estado", ESTADOS,
+                                       index=None, placeholder="Selecciona...")
             fecha_n   = r1d.date_input("📅 Inicio",     value=date.today())
 
             r2a, r2b, r2c, r2d = st.columns(4)
@@ -452,13 +457,22 @@ with t_new:
             )
 
         if submitted:
-            if not desc.strip():
-                st.error("La descripción no puede estar vacía.")
+            errores = []
+            if not desc.strip():        errores.append("La descripción no puede estar vacía.")
+            if not usuario_sel:         errores.append("Selecciona un usuario.")
+            if not area_form:           errores.append("Selecciona un área.")
+            if not prior:               errores.append("Selecciona una prioridad.")
+            if not estado:              errores.append("Selecciona un estado.")
+            if not tipo:                errores.append("Selecciona un tipo de tarea.")
+            if errores:
+                for e in errores:
+                    st.error(e)
             else:
                 guardar_tarea({
                     "fecha": fecha_n, "fecha_limite": fecha_lim,
                     "area": area_form, "usuario": usuario_sel, "tipo": tipo,
-                    "marca": marca, "pais": pais, "descripcion": desc.strip(),
+                    "marca": marca or "N/A", "pais": pais or "N/A",
+                    "descripcion": desc.strip(),
                     "prioridad": prior, "estado": estado,
                     "tiempo_min": int(t_real), "tiempo_estimado_min": int(t_est),
                     "notas": notas.strip(),
