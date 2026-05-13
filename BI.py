@@ -36,7 +36,7 @@ _USER_AREAS = {
     "Manuel":     ["BI","Compras"],
 }
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth — paso 1: contraseña ─────────────────────────────────────────────────
 def _check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
@@ -57,6 +57,27 @@ def _check_password() -> bool:
 
 if not _check_password():
     st.stop()
+
+# ── Auth — paso 2: quién eres ─────────────────────────────────────────────────
+if not st.session_state.get("current_user"):
+    st.markdown(
+        "<h2 style='text-align:center;margin-top:60px'>👤 ¿Quién eres?</h2>"
+        "<p style='text-align:center;color:#64748B'>Selecciona tu nombre para continuar</p>",
+        unsafe_allow_html=True,
+    )
+    col = st.columns([1, 1, 1])[1]
+    with col:
+        _u = st.selectbox("Usuario", _USUARIOS_LOGIN, index=None,
+                          placeholder="Selecciona tu nombre...", label_visibility="collapsed")
+        if st.button("Continuar", use_container_width=True, type="primary"):
+            if _u:
+                st.session_state["current_user"] = _u
+                st.rerun()
+            else:
+                st.error("Selecciona tu nombre para continuar")
+    st.stop()
+
+yo_soy = st.session_state["current_user"]
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -316,13 +337,16 @@ with st.sidebar:
             )
 
     st.divider()
-    yo_soy = st.selectbox(
-        "👤 Yo soy",
-        USUARIOS,
-        index=None,
-        placeholder="¿Quién eres?",
-        key="yo_soy_sel",
+    bg, color = USER_COLORS.get(yo_soy, ("#F1F5F9", "#475569"))
+    st.markdown(
+        f"<div style='background:{bg};color:{color};padding:8px 12px;"
+        f"border-radius:10px;font-weight:700;text-align:center'>"
+        f"👤 {yo_soy}</div>",
+        unsafe_allow_html=True,
     )
+    if st.button("Cambiar usuario", use_container_width=True):
+        del st.session_state["current_user"]
+        st.rerun()
     st.divider()
     st.caption(f"📁 `tasks.csv`  ·  v2.0")
 
@@ -336,7 +360,7 @@ st.markdown("""
 </p>""", unsafe_allow_html=True)
 
 # ── Áreas visibles según el usuario logueado ──────────────────────────────────
-_mis_areas = USER_AREAS.get(yo_soy, AREAS) if yo_soy else AREAS
+_mis_areas = USER_AREAS.get(yo_soy, AREAS)
 
 # ── Selector de área (solo muestra las áreas del usuario) ─────────────────────
 area_sel = st.radio(
@@ -344,7 +368,7 @@ area_sel = st.radio(
     ["Todas"] + _mis_areas,
     horizontal=True,
     index=0,
-    key=f"area_sel_{yo_soy or 'all'}",
+    key=f"area_sel_{yo_soy}",
     label_visibility="collapsed",
 )
 st.divider()
@@ -504,7 +528,7 @@ with t_new:
 
     # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
-        _areas_label = ", ".join(_mis_areas) if yo_soy else "todas las áreas"
+        _areas_label = ", ".join(_mis_areas)
         st.markdown(f"### Tareas recientes — {_areas_label}")
         if df_yo_soy.empty:
             st.info("Aún no hay tareas en estas áreas.")
