@@ -335,22 +335,28 @@ st.markdown("""
     BI · Distribución · Insumos · Compras
 </p>""", unsafe_allow_html=True)
 
-# ── Selector de área ──────────────────────────────────────────────────────────
+# ── Áreas visibles según el usuario logueado ──────────────────────────────────
+_mis_areas = USER_AREAS.get(yo_soy, AREAS) if yo_soy else AREAS
+
+# ── Selector de área (solo muestra las áreas del usuario) ─────────────────────
 area_sel = st.radio(
     "Área",
-    ["Todas"] + AREAS,
+    ["Todas"] + _mis_areas,
     horizontal=True,
     index=0,
-    key="area_sel",
+    key=f"area_sel_{yo_soy or 'all'}",
     label_visibility="collapsed",
 )
 st.divider()
 
-# Filtrar por área seleccionada
-df_area = df_all[df_all["area"] == area_sel] if area_sel != "Todas" else df_all.copy()
+# Dataset base: solo áreas accesibles para este usuario
+df_base = df_all[df_all["area"].isin(_mis_areas)].copy()
 
-# Vista rápida por usuario (para tabs que se renderizan antes del filtro global)
-df_yo_soy = df_area[df_area["usuario"] == yo_soy].copy() if yo_soy else df_area.copy()
+# Filtrar por área seleccionada (dentro de las accesibles)
+df_area = df_base[df_base["area"] == area_sel].copy() if area_sel != "Todas" else df_base.copy()
+
+# df_yo_soy = todas las tareas del área del usuario (ve a sus compañeros de área)
+df_yo_soy = df_area.copy()
 
 # ── Alertas ───────────────────────────────────────────────────────────────────
 if not df_area.empty:
@@ -434,7 +440,7 @@ with t_new:
         usuario_sel = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
                                    index=_usr_idx, placeholder="Selecciona usuario...",
                                    key=f"usuario_nueva_{yo_soy or 'none'}")
-        areas_disponibles = USER_AREAS.get(usuario_sel, AREAS)
+        areas_disponibles = USER_AREAS.get(usuario_sel) or _mis_areas
 
         with st.form("form_nueva", clear_on_submit=True):
             desc = st.text_area("📝 Descripción *",
@@ -498,10 +504,10 @@ with t_new:
 
     # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
-        lbl_rec = f"### Tareas recientes — {yo_soy}" if yo_soy else "### Tareas recientes"
-        st.markdown(lbl_rec)
+        _areas_label = ", ".join(_mis_areas) if yo_soy else "todas las áreas"
+        st.markdown(f"### Tareas recientes — {_areas_label}")
         if df_yo_soy.empty:
-            st.info("Sin tareas para este usuario." if yo_soy else "Aún no hay tareas. ¡Agrega la primera!")
+            st.info("Aún no hay tareas en estas áreas.")
         else:
             recientes = df_yo_soy.sort_values("creado_en", ascending=False).head(10)
             for _, r in recientes.iterrows():
@@ -559,9 +565,7 @@ with st.expander("🔍  Filtros adicionales", expanded=False):
     else:
         usuarios_del_area = sorted([u for u, areas in USER_AREAS.items()
                                     if area_sel in areas and u in df_area["usuario"].unique()])
-    _usr_default = [yo_soy] if yo_soy and yo_soy in usuarios_del_area else []
-    f_usr  = fc1.multiselect("Usuario", usuarios_del_area, default=_usr_default,
-                              key=f"f_usr_{yo_soy or 'all'}")
+    f_usr  = fc1.multiselect("Usuario", usuarios_del_area)
     f_tipo = fc2.multiselect("Tipo",    sorted(df_area["tipo"].unique()))
     f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
     f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
