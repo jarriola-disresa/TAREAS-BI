@@ -316,6 +316,14 @@ with st.sidebar:
             )
 
     st.divider()
+    yo_soy = st.selectbox(
+        "👤 Yo soy",
+        USUARIOS,
+        index=None,
+        placeholder="¿Quién eres?",
+        key="yo_soy_sel",
+    )
+    st.divider()
     st.caption(f"📁 `tasks.csv`  ·  v2.0")
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
@@ -340,6 +348,9 @@ st.divider()
 
 # Filtrar por área seleccionada
 df_area = df_all[df_all["area"] == area_sel] if area_sel != "Todas" else df_all.copy()
+
+# Vista rápida por usuario (para tabs que se renderizan antes del filtro global)
+df_yo_soy = df_area[df_area["usuario"] == yo_soy].copy() if yo_soy else df_area.copy()
 
 # ── Alertas ───────────────────────────────────────────────────────────────────
 if not df_area.empty:
@@ -419,9 +430,10 @@ with t_new:
         else:
             usuarios_opciones = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
 
-        usuario_sel       = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
-                                         index=None, placeholder="Selecciona usuario...",
-                                         key="usuario_nueva")
+        _usr_idx = usuarios_opciones.index(yo_soy) if yo_soy and yo_soy in usuarios_opciones else None
+        usuario_sel = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
+                                   index=_usr_idx, placeholder="Selecciona usuario...",
+                                   key=f"usuario_nueva_{yo_soy or 'none'}")
         areas_disponibles = USER_AREAS.get(usuario_sel, AREAS)
 
         with st.form("form_nueva", clear_on_submit=True):
@@ -486,11 +498,12 @@ with t_new:
 
     # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
-        st.markdown("### Tareas recientes")
-        if df_area.empty:
-            st.info("Aún no hay tareas. ¡Agrega la primera!")
+        lbl_rec = f"### Tareas recientes — {yo_soy}" if yo_soy else "### Tareas recientes"
+        st.markdown(lbl_rec)
+        if df_yo_soy.empty:
+            st.info("Sin tareas para este usuario." if yo_soy else "Aún no hay tareas. ¡Agrega la primera!")
         else:
-            recientes = df_area.sort_values("creado_en", ascending=False).head(10)
+            recientes = df_yo_soy.sort_values("creado_en", ascending=False).head(10)
             for _, r in recientes.iterrows():
                 rid = int(r["id"])
                 tc  = COLOR_ESTADO.get(r["estado"], C_GRAY)
@@ -546,7 +559,9 @@ with st.expander("🔍  Filtros adicionales", expanded=False):
     else:
         usuarios_del_area = sorted([u for u, areas in USER_AREAS.items()
                                     if area_sel in areas and u in df_area["usuario"].unique()])
-    f_usr  = fc1.multiselect("Usuario", usuarios_del_area)
+    _usr_default = [yo_soy] if yo_soy and yo_soy in usuarios_del_area else []
+    f_usr  = fc1.multiselect("Usuario", usuarios_del_area, default=_usr_default,
+                              key=f"f_usr_{yo_soy or 'all'}")
     f_tipo = fc2.multiselect("Tipo",    sorted(df_area["tipo"].unique()))
     f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
     f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
