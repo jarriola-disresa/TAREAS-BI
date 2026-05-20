@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Usuarios y permisos (definidos antes del auth para usarlos en la pantalla de login) ──
+# ── Usuarios y permisos ───────────────────────────────────────────────────────
 _USUARIOS_LOGIN = ["Sebas","Gilda","Karen","Allison","JC Salazar",
                    "JC Letona","Chema","Manuel","José David"]
 _USER_AREAS = {
@@ -160,7 +160,6 @@ ESTADOS     = ["Pendiente","En progreso","Completada","Bloqueada"]
 COLUMNAS    = ["id","fecha","fecha_limite","area","usuario","tipo","marca","pais","descripcion",
                "prioridad","estado","tiempo_min","tiempo_estimado_min","notas","creado_en"]
 
-# Colores por usuario
 USER_COLORS = {
     "Chema":      ("#DBEAFE","#1D4ED8"),
     "JC Letona":  ("#D1FAE5","#065F46"),
@@ -215,6 +214,12 @@ def _procesar_df(df: pd.DataFrame) -> pd.DataFrame:
         df["tiempo_min"]          = pd.to_numeric(df["tiempo_min"],          errors="coerce").fillna(0).astype(int)
         df["tiempo_estimado_min"] = pd.to_numeric(df["tiempo_estimado_min"], errors="coerce").fillna(0).astype(int)
         df["notas"]               = df["notas"].fillna("")
+
+        # Blindaje: columnas categóricas siempre string, sin NaN.
+        # Evita TypeError al hacer sorted() con valores mezclados.
+        for col in ["tipo", "marca", "pais", "estado", "usuario", "area", "prioridad", "descripcion"]:
+            if col in df.columns:
+                df[col] = df[col].fillna("N/A").astype(str)
     return df
 
 @st.cache_data(ttl=30)
@@ -299,10 +304,14 @@ def sel_o_escribe(label, opciones, key, col=None):
                        key=f"txt_{key}", label_visibility="collapsed")
     return txt.strip() if txt.strip() else (val or "")
 
-# ── Carga única de datos (se refresca completa en cada st.rerun) ──────────────
+def _opts(serie):
+    """Opciones ordenadas para multiselects, blindadas contra NaN y tipos mezclados."""
+    return sorted(serie.dropna().astype(str).unique())
+
+# ── Carga única de datos ──────────────────────────────────────────────────────
 df_all = cargar_datos()
 
-# ── SIDEBAR — métricas rápidas ────────────────────────────────────────────────
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
     <div style='text-align:center;padding:8px 0 14px'>
@@ -362,7 +371,6 @@ st.markdown("""
 # ── Áreas visibles según el usuario logueado ──────────────────────────────────
 _mis_areas = USER_AREAS.get(yo_soy, AREAS)
 
-# ── Selector de área (solo muestra las áreas del usuario) ─────────────────────
 area_sel = st.radio(
     "Área",
     ["Todas"] + _mis_areas,
@@ -373,13 +381,8 @@ area_sel = st.radio(
 )
 st.divider()
 
-# Dataset base: solo áreas accesibles para este usuario
 df_base = df_all[df_all["area"].isin(_mis_areas)].copy()
-
-# Filtrar por área seleccionada (dentro de las accesibles)
 df_area = df_base[df_base["area"] == area_sel].copy() if area_sel != "Todas" else df_base.copy()
-
-# df_yo_soy = todas las tareas del área del usuario (ve a sus compañeros de área)
 df_yo_soy = df_area.copy()
 
 # ── Alertas ───────────────────────────────────────────────────────────────────
@@ -387,7 +390,6 @@ if not df_area.empty:
     hoy      = date.today()
     no_comp  = df_area[~df_area["estado"].isin(["Completada"])].copy()
 
-    # Bloqueadas
     bloq_df  = no_comp[no_comp["estado"] == "Bloqueada"]
     if not bloq_df.empty:
         with st.expander(f"⚠️  {len(bloq_df)} tarea(s) BLOQUEADA(s) — requieren atención", expanded=True):
@@ -399,7 +401,6 @@ if not df_area.empty:
                     · {r['tipo']} · <b>{r['descripcion'][:80]}</b>{nota}
                 </div>""", unsafe_allow_html=True)
 
-    # Vencidas (fecha_limite < hoy)
     venc_df = no_comp[no_comp["fecha_limite"].notna() & (no_comp["fecha_limite"] < hoy)]
     if not venc_df.empty:
         with st.expander(f"🔴  {len(venc_df)} tarea(s) VENCIDA(s)", expanded=True):
@@ -415,7 +416,6 @@ if not df_area.empty:
                     (límite: {r['fecha_limite']})</span>
                 </div>""", unsafe_allow_html=True)
 
-    # Próximas a vencer (hoy + 3 días)
     prox_df = no_comp[
         no_comp["fecha_limite"].notna() &
         (no_comp["fecha_limite"] >= hoy) &
@@ -454,17 +454,27 @@ with t_new:
         st.markdown("### Registrar nueva tarea")
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Solo muestra usuarios que pertenecen al área seleccionada
-        if area_sel == "Todas":
-            usuarios_opciones = USUARIOS
-        else:
-            usuarios_opciones = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
+        bg, color = USER_COLORS.get(yo_soy, ("#F1F5F9", "#475569"))
+        st.markdown(
+            "<div style='font-size:.78rem;color:#64748B;margin-bottom:4px'>Registrado por</div>"
+            f"<div style='background:{bg};color:{color};padding:6px 14px;border-radius:20px;"
+            f"display:inline-block;font-weight:700;margin-bottom:16px'>{yo_soy}</div>",
+            unsafe_allow_html=True,
+        )
 
-        _usr_idx = usuarios_opciones.index(yo_soy) if yo_soy and yo_soy in usuarios_opciones else None
-        usuario_sel = st.selectbox("👤 ¿Quién eres?", usuarios_opciones,
-                                   index=_usr_idx, placeholder="Selecciona usuario...",
-                                   key=f"usuario_nueva_{yo_soy or 'none'}")
-        areas_disponibles = USER_AREAS.get(usuario_sel) or _mis_areas
+        if area_sel == "Todas":
+            usuarios_asignar = USUARIOS
+        else:
+            usuarios_asignar = [u for u in USUARIOS if area_sel in USER_AREAS.get(u, [])]
+
+        _usr_idx = usuarios_asignar.index(yo_soy) if yo_soy in usuarios_asignar else 0
+        usuario_sel = st.selectbox(
+            "👤 Asignar a",
+            usuarios_asignar,
+            index=_usr_idx,
+            key=f"usuario_nueva_{yo_soy or 'none'}",
+        )
+        areas_disponibles = _mis_areas
 
         with st.form("form_nueva", clear_on_submit=True):
             desc = st.text_area("📝 Descripción *",
@@ -526,7 +536,6 @@ with t_new:
         if st.session_state.get("ultima_tarea"):
             st.info(f"Última tarea agregada: **{st.session_state['ultima_tarea']}**")
 
-    # ── Tareas recientes ──────────────────────────────────────────────────────
     with col_recientes:
         _areas_label = ", ".join(_mis_areas)
         st.markdown(f"### Tareas recientes — {_areas_label}")
@@ -542,7 +551,6 @@ with t_new:
                     f"#{rid} · {r['descripcion'][:48]}",
                     expanded=False,
                 ):
-                    # Info rápida
                     st.markdown(f"""
                     <div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px'>
                         {user_badge(r["usuario"])}
@@ -574,7 +582,7 @@ with t_new:
                         eliminar_tarea(rid)
                         st.rerun()
 
-# ── Filtros globales (para los demás tabs) ────────────────────────────────────
+# ── Filtros globales ──────────────────────────────────────────────────────────
 if df_area.empty:
     for tab in [t1, t2, t3, t4, t_gantt, t5, t6]:
         with tab:
@@ -583,17 +591,16 @@ if df_area.empty:
 
 with st.expander("🔍  Filtros adicionales", expanded=False):
     fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-    # Usuarios filtrados por área seleccionada
     if area_sel == "Todas":
-        usuarios_del_area = sorted(df_area["usuario"].unique())
+        usuarios_del_area = _opts(df_area["usuario"])
     else:
         usuarios_del_area = sorted([u for u, areas in USER_AREAS.items()
                                     if area_sel in areas and u in df_area["usuario"].unique()])
     f_usr  = fc1.multiselect("Usuario", usuarios_del_area)
-    f_tipo = fc2.multiselect("Tipo",    sorted(df_area["tipo"].unique()))
-    f_marc = fc3.multiselect("Marca",   sorted(df_area["marca"].unique()))
-    f_pais = fc4.multiselect("País",    sorted(df_area["pais"].unique()))
-    f_est  = fc5.multiselect("Estado",  sorted(df_area["estado"].unique()))
+    f_tipo = fc2.multiselect("Tipo",    _opts(df_area["tipo"]))
+    f_marc = fc3.multiselect("Marca",   _opts(df_area["marca"]))
+    f_pais = fc4.multiselect("País",    _opts(df_area["pais"]))
+    f_est  = fc5.multiselect("Estado",  _opts(df_area["estado"]))
     rango  = st.date_input("Rango de fechas", value=())
 
 df_f = df_area.copy()
@@ -744,17 +751,14 @@ with t2:
 # TAB 3 — EQUIPO
 # ══════════════════════════════════════════════════════════════════════════════
 with t3:
-    # Solo usuarios que tienen tareas con los filtros actuales
     usuarios_activos = [u for u in USUARIOS if len(df_f[df_f["usuario"] == u]) > 0]
 
     if not usuarios_activos:
         st.info("Sin tareas con los filtros actuales.")
     else:
-        # Paleta de colores para cada usuario
         RADAR_COLORS = [C_BLUE, C_GREEN, C_AMBER, C_RED, C_PURPLE,
                         "#F97316", "#0369A1", "#047857"]
 
-        # ── Tarjetas individuales (2 columnas) ────────────────────────────────
         for i in range(0, len(usuarios_activos), 2):
             cols = st.columns(2)
             for j, col in enumerate(cols):
@@ -785,7 +789,6 @@ with t3:
 
         st.divider()
 
-        # ── Radar comparativo ─────────────────────────────────────────────────
         st.markdown("<div class='section-title'>Radar — Tipos de tarea por usuario</div>",
                     unsafe_allow_html=True)
         fig = go.Figure()
@@ -861,13 +864,11 @@ with t_gantt:
     if df_f.empty:
         st.info("No hay tareas con los filtros actuales.")
     else:
-        # ── Controles ─────────────────────────────────────────────────────────
         gc1, gc2, gc3 = st.columns(3)
         g_color    = gc1.radio("Colorear por", ["Estado", "Usuario", "Prioridad"], horizontal=True)
         g_estados  = gc2.multiselect("Filtrar estados",  ESTADOS,  default=[])
         g_usuarios = gc3.multiselect("Filtrar usuarios", USUARIOS, default=[])
 
-        # Todas las tareas — sin fecha_limite usan fecha+1 día como barra mínima
         df_g = df_f.copy()
         df_g["Start"]  = pd.to_datetime(df_g["fecha"])
         df_g["Finish"] = df_g.apply(
@@ -881,7 +882,6 @@ with t_gantt:
         )
         df_g["sin_limite"] = df_f["fecha_limite"].isna() | (df_f["fecha_limite"] == df_f["fecha"])
 
-        # Filtros: vacío = mostrar todos
         if g_estados:
             df_g = df_g[df_g["estado"].isin(g_estados)]
         if g_usuarios:
@@ -931,7 +931,6 @@ with t_gantt:
             st.caption(f"⚪ Las tareas sin fecha límite se muestran como barra de 1 día. "
                        f"Agrégala en ⚙️ Gestionar para ver su duración real.")
 
-            # ── Tareas vencidas ────────────────────────────────────────────────
             vencidas = df_g[
                 (df_g["Finish"].dt.date < date.today()) &
                 (df_g["estado"] != "Completada") &
@@ -967,10 +966,10 @@ with t5:
 
     def row_color(row):
         estado = str(row["estado"])
-        if estado == "Completada":   bg = "#D1FAE5"  # verde
-        elif estado == "En progreso": bg = "#FEF9C3"  # amarillo
-        elif estado == "Bloqueada":   bg = "#FEE2E2"  # rojo
-        else:                         bg = "#F8FAFC"  # gris claro (Pendiente)
+        if estado == "Completada":   bg = "#D1FAE5"
+        elif estado == "En progreso": bg = "#FEF9C3"
+        elif estado == "Bloqueada":   bg = "#FEE2E2"
+        else:                         bg = "#F8FAFC"
         return [f"background-color:{bg}"] * len(row)
 
     styled = (df_tabla.sort_values("fecha", ascending=False)
